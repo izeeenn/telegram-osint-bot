@@ -76,7 +76,7 @@ def advanced_lookup(username, session_id):
 def main_menu():
     botones = [
         [InlineKeyboardButton("🔎 Buscar usuario de Instagram", callback_data="search_user")],
-        [InlineKeyboardButton("🔄 Cambiar SESSION_ID", callback_data="change_session_id")]
+        [InlineKeyboardButton("🔑 Cambiar SESSION_ID", callback_data="change_session")]
     ]
     return InlineKeyboardMarkup(botones)
 
@@ -120,32 +120,26 @@ async def search_user(client, callback_query):
                 
                 # Enviar la foto de perfil al inicio
                 await message.reply_photo(
-                    photo=data['profile_picture'],
-                    caption=info_msg
+                    photo=data['profile_picture'],  # Foto de perfil
+                    caption=info_msg  # Información del perfil
                 )
 
                 app.remove_handler(receive_username)
 
 # Callback para cambiar SESSION_ID
-@app.on_callback_query(filters.regex("change_session_id"))
-async def change_session_id(client, callback_query):
+@app.on_callback_query(filters.regex("change_session"))
+async def change_session(client, callback_query):
     chat_id = callback_query.message.chat.id
-    await callback_query.message.edit_text("⚙️ Envíame el nuevo **SESSION_ID**.")
+    await callback_query.message.edit_text("🔐 Envíame el **nuevo SESSION_ID**.")
 
     @app.on_message(filters.text & filters.private)
-    async def receive_new_session_id(client, message):
+    async def receive_new_session(client, message):
         if message.chat.id == chat_id:
-            new_session_id = message.text.strip()
-            if new_session_id:
-                global SESSION_ID
-                SESSION_ID = new_session_id
-                # Guardamos el nuevo SESSION_ID en el archivo .env
-                with open('.env', 'w') as env_file:
-                    env_file.write(f"SESSION_ID={SESSION_ID}\n")
-                await message.reply_text(f"🔄 **Nuevo SESSION_ID guardado:** `{SESSION_ID}`")
-            else:
-                await message.reply_text("❌ **Error:** No se proporcionó un SESSION_ID válido.")
-            app.remove_handler(receive_new_session_id)
+            global SESSION_ID
+            SESSION_ID = message.text.strip()
+            os.environ["SESSION_ID"] = SESSION_ID  # Guardar en el entorno también
+            await message.reply_text(f"✅ Nuevo SESSION_ID guardado: `{SESSION_ID}`")
+            app.remove_handler(receive_new_session)
 
 # Ejecutar el bot
 if __name__ == "__main__":
