@@ -19,7 +19,7 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
-# Variable global para almacenar el SESSION_ID
+# Variable global para almacenar el SESSION_ID temporalmente
 session_id = None
 
 # Función para construir el menú dinámico
@@ -44,22 +44,20 @@ async def start(client, message):
 # Callback para añadir SESSION_ID
 @app.on_callback_query(filters.regex("add_session"))
 async def add_session(client, callback_query):
-    await callback_query.message.edit_text(
-        "✍️ Envíame tu `SESSION_ID` para continuar.\n\n"
-        "📌 *Escribe el código y envíalo como mensaje.*"
-    )
-
-    # Esperar el mensaje con el SESSION_ID
-    session_message = await client.listen(callback_query.message.chat.id)
-
     global session_id
+
+    # Preguntar al usuario por su SESSION_ID
+    await callback_query.message.edit_text("✍️ Envíame tu `SESSION_ID` para continuar.")
+
+    # Esperar el mensaje del usuario
+    session_message = await client.listen(callback_query.message.chat.id, filters=filters.text)
     session_id = session_message.text.strip()
 
     if not session_id:
         await callback_query.message.reply_text("⚠️ El **SESSION_ID** es necesario. Por favor, envíalo de nuevo.")
         return
 
-    # Confirmación
+    # Confirmación y actualizar menú
     await callback_query.message.reply_text(
         "✅ **SESSION_ID guardado correctamente.**\n\n"
         "Ahora puedes buscar un usuario de Instagram desde el menú.",
@@ -69,6 +67,8 @@ async def add_session(client, callback_query):
 # Callback para buscar usuario
 @app.on_callback_query(filters.regex("search_user"))
 async def search_user(client, callback_query):
+    global session_id
+
     if not session_id:
         await callback_query.message.edit_text(
             "⚠️ No has proporcionado un **SESSION_ID**. Añádelo antes de continuar.",
@@ -76,12 +76,10 @@ async def search_user(client, callback_query):
         )
         return
 
-    await callback_query.message.edit_text(
-        "🔍 Envíame el **nombre de usuario** de Instagram que quieres buscar."
-    )
+    await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram que quieres buscar.")
 
-    # Esperar el mensaje con el nombre de usuario
-    username_message = await client.listen(callback_query.message.chat.id)
+    # Esperar el mensaje del usuario con el nombre
+    username_message = await client.listen(callback_query.message.chat.id, filters=filters.text)
     username = username_message.text.strip()
 
     await callback_query.message.reply_text("🔍 Buscando información, espera un momento...")
