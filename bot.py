@@ -36,8 +36,12 @@ def get_instagram_info(username, session_id):
     try:
         response = requests.get(profile_url, headers=headers, cookies=cookies)
         
-        # Verificar el código de estado de la respuesta
-        if response.status_code != 200:
+        # Manejo de errores de la API
+        if response.status_code == 500:
+            return {"error": "Error interno del servidor de Instagram. Intenta más tarde."}
+        elif response.status_code == 404:
+            return {"error": "Usuario no encontrado."}
+        elif response.status_code != 200:
             return {"error": f"Error al contactar con Instagram, código de estado: {response.status_code}"}
         
         # Intentar decodificar la respuesta como JSON
@@ -47,7 +51,7 @@ def get_instagram_info(username, session_id):
             return {"error": "La respuesta no es un JSON válido."}
         
         if not user_data:
-            return {"error": "Usuario no encontrado o respuesta malformada."}
+            return {"error": "No se pudo obtener información del usuario."}
         
         obfuscated_info = advanced_lookup(username, session_id)
         
@@ -76,12 +80,15 @@ def advanced_lookup(username, session_id):
         "User-Agent": "Instagram 101.0.0.15.120",
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
     }
-    response = requests.post("https://i.instagram.com/api/v1/users/lookup/", headers=headers, data=data, cookies={"sessionid": session_id})
-    
     try:
+        response = requests.post("https://i.instagram.com/api/v1/users/lookup/", headers=headers, data=data, cookies={"sessionid": session_id})
+        
+        if response.status_code != 200:
+            return {"error": f"Error al obtener información avanzada, código de estado: {response.status_code}"}
+        
         return response.json()
-    except json.JSONDecodeError:
-        return {"error": "Rate limit"}
+    except requests.exceptions.RequestException as e:
+        return {"error": f"Error en la solicitud avanzada: {str(e)}"}
 
 # Función para construir el menú dinámico
 def main_menu():
