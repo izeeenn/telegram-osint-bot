@@ -53,7 +53,7 @@ async def menu_handler(client, callback_query):
         )
 
 # Respuesta al envío de un número de teléfono
-@app.on_message(filters.text & ~filters.command())
+@app.on_message(filters.text & ~filters.command(["start", "help"]))
 async def handle_phone_number(client, message):
     phone_number = message.text.strip()
     if not phone_number.startswith("+"):
