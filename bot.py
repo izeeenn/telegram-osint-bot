@@ -137,9 +137,12 @@ async def change_session_id(client, callback_query):
     async def receive_new_session(client, message):
         if message.chat.id == chat_id:
             new_session_id = message.text.strip()
-            global SESSION_ID
-            SESSION_ID = new_session_id
-            await message.reply_text(f"✅ **Nuevo SESSION_ID** guardado: `{SESSION_ID}`")
+            if new_session_id != SESSION_ID:  # Verificar si el nuevo SESSION_ID es diferente
+                global SESSION_ID
+                SESSION_ID = new_session_id
+                await message.reply_text(f"✅ **Nuevo SESSION_ID** guardado: `{SESSION_ID}`")
+            else:
+                await message.reply_text("⚠️ El SESSION_ID proporcionado es el mismo que el actual.")
             app.remove_handler(receive_new_session)
 
 # Ejecutar el bot
