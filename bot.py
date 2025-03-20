@@ -5,9 +5,6 @@ from urllib.parse import quote_plus
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
-import phonenumbers
-from phonenumbers.phonenumberutil import region_code_for_country_code
-import pycountry
 
 # Cargar variables de entorno
 load_dotenv()
@@ -53,8 +50,6 @@ def get_instagram_info(username, session_id):
         if not user_data:
             return {"error": "No se pudo obtener información del usuario."}
         
-        obfuscated_info = advanced_lookup(username, session_id)
-        
         return {
             "username": user_data.get("username", "No disponible"),
             "full_name": user_data.get("full_name", "No disponible"),
@@ -63,32 +58,11 @@ def get_instagram_info(username, session_id):
             "is_private": user_data.get("is_private", False),
             "bio": user_data.get("biography", "No disponible"),
             "profile_picture": user_data.get("profile_pic_url_hd", "No disponible"),
-            "public_email": user_data.get("public_email", "No disponible"),
-            "public_phone": user_data.get("public_phone_number", "No disponible"),
-            "obfuscated_email": obfuscated_info.get("obfuscated_email", "No disponible"),
-            "obfuscated_phone": obfuscated_info.get("obfuscated_phone", "No disponible"),
         }
 
     except requests.exceptions.RequestException as e:
         # Manejo de errores en la solicitud HTTP
         return {"error": f"Error en la solicitud a Instagram: {str(e)}"}
-
-# Función para obtener datos de correo y teléfono ocultos
-def advanced_lookup(username, session_id):
-    data = "signed_body=SIGNATURE." + quote_plus(json.dumps({"q": username, "skip_recovery": "1"}))
-    headers = {
-        "User-Agent": "Instagram 101.0.0.15.120",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-    }
-    try:
-        response = requests.post("https://i.instagram.com/api/v1/users/lookup/", headers=headers, data=data, cookies={"sessionid": session_id})
-        
-        if response.status_code != 200:
-            return {"error": f"Error al obtener información avanzada, código de estado: {response.status_code}"}
-        
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        return {"error": f"Error en la solicitud avanzada: {str(e)}"}
 
 # Función para construir el menú dinámico
 def main_menu():
@@ -139,8 +113,6 @@ async def search_user(client, callback_query):
                     f"📝 **Bio:** {data['bio']}\n"
                     f"📧 **Email público:** {data['public_email']}\n"
                     f"📞 **Teléfono público:** {data['public_phone']}\n"
-                    f"📧 **Correo oculto:** {data['obfuscated_email']}\n"
-                    f"📞 **Teléfono oculto:** {data['obfuscated_phone']}\n"
                 )
                 
                 # Enviar la foto de perfil al inicio
@@ -149,7 +121,8 @@ async def search_user(client, callback_query):
                     caption=info_msg  # Información del perfil
                 )
 
-                app.remove_handler(receive_username)
+                # Asegúrate de no eliminar el handler innecesariamente
+                return  # Evita la remoción de handler aquí
 
 # Callback para cambiar SESSION_ID
 @app.on_callback_query(filters.regex("change_session"))
@@ -168,8 +141,7 @@ async def change_session(client, callback_query):
                 SESSION_ID = new_session_id
                 os.environ["SESSION_ID"] = new_session_id  # Guardar en el entorno también
                 await message.reply_text(f"✅ Nuevo SESSION_ID guardado: `{SESSION_ID}`")
-                app.remove_handler(receive_new_session)
-                # Volver a mostrar el menú
+                # Volver a mostrar el menú principal después de actualizar el SESSION_ID
                 await message.reply_text(
                     f"🌟 **SESSION_ID actual:** `{SESSION_ID}`\n\n"
                     "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
@@ -177,7 +149,6 @@ async def change_session(client, callback_query):
                 )
             else:
                 await message.reply_text("❌ El SESSION_ID no puede estar vacío. Por favor, ingresa uno válido.")
-                app.remove_handler(receive_new_session)
 
 # Callback para volver al menú principal
 @app.on_callback_query(filters.regex("back_to_main"))
