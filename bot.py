@@ -143,7 +143,10 @@ async def change_session_id(client, callback_query):
                 await message.reply_text(f"✅ **Nuevo SESSION_ID** guardado: `{SESSION_ID}`")
             else:
                 await message.reply_text("⚠️ El SESSION_ID proporcionado es el mismo que el actual.")
-            app.remove_handler(receive_new_session)
+            
+            # Asegurarse de que el handler se elimina correctamente si aún está registrado
+            if receive_new_session in app.handlers:
+                app.remove_handler(receive_new_session)
 
 # Ejecutar el bot
 if __name__ == "__main__":
