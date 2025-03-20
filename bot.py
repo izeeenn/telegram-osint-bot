@@ -3,6 +3,7 @@ import requests
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
+import time
 
 # Cargar variables de entorno
 load_dotenv()
@@ -60,12 +61,13 @@ def get_instagram_info(username, session_id):
 
     obfuscated_data = lookup_response.json()
 
+    # Verificar si los datos obfuscados están presentes
+    obfuscated_email = obfuscated_data.get("obfuscated_email", "No disponible")
+    obfuscated_phone = obfuscated_data.get("obfuscated_phone", "No disponible")
+
     # Extraer emails y teléfonos públicos u obfuscados
     public_email = user_info.get("public_email", "No disponible")
-    obfuscated_email = obfuscated_data.get("obfuscated_email", "No disponible")
-
     public_phone = user_info.get("public_phone_number", "No disponible")
-    obfuscated_phone = obfuscated_data.get("obfuscated_phone", "No disponible")
 
     # Construir la respuesta
     info = {
@@ -91,10 +93,9 @@ def get_instagram_info(username, session_id):
 async def start(client, message):
     await message.reply_text(
         "¡Bienvenido al bot OSINT de Instagram! 🔍\n\nSelecciona una opción:",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("Buscar usuario de Instagram", callback_data="search_instagram")],
-            [InlineKeyboardButton("Ayuda", callback_data="help")]
-        ])
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("Buscar usuario de Instagram", callback_data="search_instagram")
+        ]])
     )
 
 # Manejo de botones
@@ -104,16 +105,17 @@ async def menu_handler(client, callback_query):
 
     if data == "search_instagram":
         await callback_query.message.edit_text("Envíame el nombre de usuario de Instagram que quieres buscar.")
-    elif data == "help":
-        await callback_query.message.edit_text("Este bot obtiene información pública de cuentas de Instagram. Introduce un nombre de usuario para comenzar.")
 
 # Buscar usuario de Instagram
-@app.on_message(filters.text & ~filters.command(["start", "help"]))
+@app.on_message(filters.text & ~filters.command(["start"]))
 async def handle_instagram_username(client, message):
     username = message.text.strip()
-    
+
     await message.reply_text("🔍 Buscando información, espera un momento...")
-    
+
+    # Retraso entre peticiones para evitar ser bloqueado
+    time.sleep(2)
+
     data = get_instagram_info(username, SESSION_ID)
 
     if "error" in data:
