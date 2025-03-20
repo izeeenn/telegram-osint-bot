@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 API_ID = int(os.getenv("API_ID"))
-API_HASH = os.getenv("API_HASH")
+API_HASH = os.getenv("API_HASH"))
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SESSION_ID = os.getenv("SESSION_ID")
 
@@ -34,6 +34,9 @@ def get_instagram_info(username, session_id):
     
     if response.status_code == 404:
         return {"error": "Usuario no encontrado"}
+
+    if response.status_code == 403 and "login_required" in response.text:
+        return {"error": "Se requiere iniciar sesión. La sesión proporcionada no es válida."}
 
     user_data = response.json().get("data", {}).get("user", {})
     if not user_data:
