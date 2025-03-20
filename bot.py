@@ -7,12 +7,12 @@ from dotenv import load_dotenv
 # Cargar variables de entorno
 load_dotenv()
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-API_ID = os.getenv("API_ID")
+API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
-SESSION_ID = os.getenv("SESSION_ID")  # Instagram sessionid
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+SESSION_ID = os.getenv("SESSION_ID")
 
-# Configuración del cliente de Pyrogram
+# Configuración del bot
 app = Client(
     "osint_bot",
     api_id=API_ID,
@@ -22,110 +22,93 @@ app = Client(
 
 # Función para obtener información de Instagram
 def get_instagram_info(username, session_id):
-    headers = {"User-Agent": "iphone_ua", "x-ig-app-id": "936619743392459"}
-    api = requests.get(
-        f'https://i.instagram.com/api/v1/users/web_profile_info/?username={username}',
-        headers=headers,
-        cookies={'sessionid': session_id}
-    )
+    url = f'https://i.instagram.com/api/v1/users/web_profile_info/?username={username}'
+    headers = {
+        "User-Agent": "Instagram 101.0.0.15.120",
+        "x-ig-app-id": "936619743392459"
+    }
+    cookies = {"sessionid": session_id}
 
     try:
-        if api.status_code == 404:
-            return {"error": "❌ Usuario no encontrado"}
+        response = requests.get(url, headers=headers, cookies=cookies)
+        response.raise_for_status()
+        data = response.json().get("data", {}).get("user", {})
 
-        user = api.json()["data"]['user']
-        return {
-            "username": user.get("username", "N/A"),
-            "id": user.get("id", "N/A"),
-            "full_name": user.get("full_name", "N/A"),
-            "is_verified": user.get("is_verified", False),
-            "is_private": user.get("is_private", False),
-            "followers": user.get("edge_followed_by", {}).get("count", "N/A"),
-            "following": user.get("edge_follow", {}).get("count", "N/A"),
-            "bio": user.get("biography", "N/A"),
-            "profile_pic": user.get("profile_pic_url_hd", "N/A"),
-            "external_url": user.get("external_url", "N/A"),
+        if not data:
+            return {"error": "Usuario no encontrado"}
+
+        # Extraer información relevante
+        info = {
+            "username": data.get("username", "No disponible"),
+            "full_name": data.get("full_name", "No disponible"),
+            "user_id": data.get("id", "No disponible"),
+            "followers": data.get("edge_followed_by", {}).get("count", "No disponible"),
+            "following": data.get("edge_follow", {}).get("count", "No disponible"),
+            "is_private": data.get("is_private", False),
+            "is_verified": data.get("is_verified", False),
+            "bio": data.get("biography", "No disponible"),
+            "profile_picture": data.get("profile_pic_url_hd", "No disponible"),
+            "email": data.get("public_email", "No disponible"),
+            "phone_number": (
+                f'+{data.get("public_phone_country_code", "")} {data.get("public_phone_number", "")}'
+                if data.get("public_phone_number") else "No disponible"
+            )
         }
 
-    except requests.exceptions.RequestException:
-        return {"error": "❌ No se pudo obtener la información"}
+        return info
+
+    except requests.exceptions.RequestException as e:
+        return {"error": str(e)}
 
 # Comando /start
 @app.on_message(filters.command("start"))
 async def start(client, message):
     await message.reply_text(
-        "👋 ¡Bienvenido al bot de OSINT para Instagram!\n\n"
-        "🔍 Puedes buscar información pública de un usuario de Instagram.\n"
-        "⚠️ Úsalo de forma ética y responsable.",
+        "¡Bienvenido al bot OSINT de Instagram! 🔍\n\nSelecciona una opción:",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("📖 Panel de Ayuda", callback_data="help")],
-            [InlineKeyboardButton("🔍 Buscar Usuario", callback_data="search_user")]
+            [InlineKeyboardButton("Buscar usuario de Instagram", callback_data="search_instagram")],
+            [InlineKeyboardButton("Ayuda", callback_data="help")]
         ])
     )
 
-# Menú de ayuda
-@app.on_callback_query(filters.regex("help"))
-async def help_panel(client, callback_query):
-    await callback_query.message.edit_text(
-        "ℹ️ **Panel de Ayuda**\n\n"
-        "🔹 _¿Qué hace este bot?_ \n"
-        "Este bot utiliza la API privada de Instagram para extraer información pública de un usuario.\n\n"
-        "🛠 **¿Cómo usarlo?**\n"
-        "1️⃣ Pulsa en *Buscar Usuario*.\n"
-        "2️⃣ Envía el nombre de usuario de Instagram.\n"
-        "3️⃣ Recibirás la información disponible.\n\n"
-        "✅ **Ejemplo de uso:**\n"
-        "```\n"
-        "instagram_username\n"
-        "```",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("⬅️ Volver al menú", callback_data="back")]
-        ])
-    )
+# Manejo de botones
+@app.on_callback_query()
+async def menu_handler(client, callback_query):
+    data = callback_query.data
 
-# Volver al menú principal
-@app.on_callback_query(filters.regex("back"))
-async def back_to_main(client, callback_query):
-    await start(client, callback_query.message)
+    if data == "search_instagram":
+        await callback_query.message.edit_text("Envíame el nombre de usuario de Instagram que quieres buscar.")
+    elif data == "help":
+        await callback_query.message.edit_text("Este bot obtiene información pública de cuentas de Instagram. Introduce un nombre de usuario para comenzar.")
 
-# Solicitar el nombre de usuario
-@app.on_callback_query(filters.regex("search_user"))
-async def request_username(client, callback_query):
-    await callback_query.message.edit_text(
-        "📝 Por favor, envíame el nombre de usuario de Instagram.\n\n"
-        "Ejemplo: `instagram`",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("⬅️ Volver al menú", callback_data="back")]
-        ])
-    )
-
-# Procesar el nombre de usuario y buscar información
+# Buscar usuario de Instagram
 @app.on_message(filters.text & ~filters.command(["start", "help"]))
 async def handle_instagram_username(client, message):
     username = message.text.strip()
-
-    await message.reply_text("⏳ Buscando información...")
-
+    
+    await message.reply_text("🔍 Buscando información, espera un momento...")
+    
     data = get_instagram_info(username, SESSION_ID)
 
     if "error" in data:
-        await message.reply_text(data["error"])
-        return
+        await message.reply_text(f"❌ Error: {data['error']}")
+    else:
+        info_msg = (
+            f"🔎 **Información de Instagram** 🔍\n\n"
+            f"👤 **Usuario:** {data['username']}\n"
+            f"📛 **Nombre completo:** {data['full_name']}\n"
+            f"🆔 **ID de usuario:** {data['user_id']}\n"
+            f"👥 **Seguidores:** {data['followers']}\n"
+            f"➡️ **Siguiendo:** {data['following']}\n"
+            f"🔒 **Cuenta privada:** {'Sí' if data['is_private'] else 'No'}\n"
+            f"✅ **Cuenta verificada:** {'Sí' if data['is_verified'] else 'No'}\n"
+            f"📝 **Biografía:** {data['bio']}\n"
+            f"📧 **Email público:** {data['email']}\n"
+            f"📞 **Número de teléfono:** {data['phone_number']}\n"
+            f"🖼️ **Foto de perfil:** {data['profile_picture']}\n"
+        )
 
-    info = (
-        f"📊 **Resultados de Instagram**\n\n"
-        f"👤 **Usuario:** @{data['username']}\n"
-        f"🆔 **ID:** {data['id']}\n"
-        f"📛 **Nombre Completo:** {data['full_name']}\n"
-        f"✅ **Verificado:** {'Sí' if data['is_verified'] else 'No'}\n"
-        f"🔒 **Cuenta Privada:** {'Sí' if data['is_private'] else 'No'}\n"
-        f"👥 **Seguidores:** {data['followers']}\n"
-        f"➡️ **Siguiendo:** {data['following']}\n"
-        f"📄 **Biografía:** {data['bio']}\n"
-        f"🌐 **URL Externa:** {data['external_url'] if data['external_url'] else 'Ninguna'}"
-    )
-
-    await message.reply_photo(photo=data["profile_pic"], caption=info)
+        await message.reply_text(info_msg)
 
 # Ejecutar el bot
 if __name__ == "__main__":
