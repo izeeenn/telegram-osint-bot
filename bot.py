@@ -1,7 +1,7 @@
 import os
+import requests
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-import requests
 from dotenv import load_dotenv
 
 # Cargar variables de entorno
@@ -10,73 +10,122 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
-SESSION_ID = os.getenv("SESSION_ID")
+SESSION_ID = os.getenv("SESSION_ID")  # Instagram sessionid
 
-# Configuración del cliente de Pyrogram (Faltaban API_ID y API_HASH)
+# Configuración del cliente de Pyrogram
 app = Client(
     "osint_bot",
-    api_id=int(API_ID),
+    api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN
 )
 
-# Función para extraer información pública (simula funcionalidad OSINT)
-def fetch_public_data(phone_number):
-    url = f"https://api.example.com/fetch?sessionid={SESSION_ID}&phone={phone_number}"
+# Función para obtener información de Instagram
+def get_instagram_info(username, session_id):
+    headers = {"User-Agent": "iphone_ua", "x-ig-app-id": "936619743392459"}
+    api = requests.get(
+        f'https://i.instagram.com/api/v1/users/web_profile_info/?username={username}',
+        headers=headers,
+        cookies={'sessionid': session_id}
+    )
+
     try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-        return data
-    except requests.exceptions.RequestException as e:
-        return {"error": str(e)}
+        if api.status_code == 404:
+            return {"error": "❌ Usuario no encontrado"}
+
+        user = api.json()["data"]['user']
+        return {
+            "username": user.get("username", "N/A"),
+            "id": user.get("id", "N/A"),
+            "full_name": user.get("full_name", "N/A"),
+            "is_verified": user.get("is_verified", False),
+            "is_private": user.get("is_private", False),
+            "followers": user.get("edge_followed_by", {}).get("count", "N/A"),
+            "following": user.get("edge_follow", {}).get("count", "N/A"),
+            "bio": user.get("biography", "N/A"),
+            "profile_pic": user.get("profile_pic_url_hd", "N/A"),
+            "external_url": user.get("external_url", "N/A"),
+        }
+
+    except requests.exceptions.RequestException:
+        return {"error": "❌ No se pudo obtener la información"}
 
 # Comando /start
 @app.on_message(filters.command("start"))
 async def start(client, message):
     await message.reply_text(
-        "¡Bienvenido al bot de OSINT para Telegram! 😊\n\nElige una opción del menú:",
+        "👋 ¡Bienvenido al bot de OSINT para Instagram!\n\n"
+        "🔍 Puedes buscar información pública de un usuario de Instagram.\n"
+        "⚠️ Úsalo de forma ética y responsable.",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("Extraer datos de un número", callback_data="extract_data")],
-            [InlineKeyboardButton("Ayuda", callback_data="help")]
+            [InlineKeyboardButton("📖 Panel de Ayuda", callback_data="help")],
+            [InlineKeyboardButton("🔍 Buscar Usuario", callback_data="search_user")]
         ])
     )
 
-# Manejo de botones del menú
-@app.on_callback_query()
-async def menu_handler(client, callback_query):
-    data = callback_query.data
+# Menú de ayuda
+@app.on_callback_query(filters.regex("help"))
+async def help_panel(client, callback_query):
+    await callback_query.message.edit_text(
+        "ℹ️ **Panel de Ayuda**\n\n"
+        "🔹 _¿Qué hace este bot?_ \n"
+        "Este bot utiliza la API privada de Instagram para extraer información pública de un usuario.\n\n"
+        "🛠 **¿Cómo usarlo?**\n"
+        "1️⃣ Pulsa en *Buscar Usuario*.\n"
+        "2️⃣ Envía el nombre de usuario de Instagram.\n"
+        "3️⃣ Recibirás la información disponible.\n\n"
+        "✅ **Ejemplo de uso:**\n"
+        "```\n"
+        "instagram_username\n"
+        "```",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ Volver al menú", callback_data="back")]
+        ])
+    )
 
-    if data == "extract_data":
-        await callback_query.message.edit_text(
-            "Por favor, envíame el número de teléfono (con prefijo internacional, por ejemplo +34)."
-        )
-    elif data == "help":
-        await callback_query.message.edit_text(
-            "Este bot te permite extraer información pública de cuentas de Telegram. Solo necesitas un número de teléfono válido.\n\n⚠️ Úsalo de forma ética y responsable."
-        )
+# Volver al menú principal
+@app.on_callback_query(filters.regex("back"))
+async def back_to_main(client, callback_query):
+    await start(client, callback_query.message)
 
-# Respuesta al envío de un número de teléfono
+# Solicitar el nombre de usuario
+@app.on_callback_query(filters.regex("search_user"))
+async def request_username(client, callback_query):
+    await callback_query.message.edit_text(
+        "📝 Por favor, envíame el nombre de usuario de Instagram.\n\n"
+        "Ejemplo: `instagram`",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ Volver al menú", callback_data="back")]
+        ])
+    )
+
+# Procesar el nombre de usuario y buscar información
 @app.on_message(filters.text & ~filters.command(["start", "help"]))
-async def handle_phone_number(client, message):
-    phone_number = message.text.strip()
-    if not phone_number.startswith("+"):
-        await message.reply_text("Por favor, introduce un número válido con el prefijo internacional, por ejemplo: +34...")
-        return
+async def handle_instagram_username(client, message):
+    username = message.text.strip()
 
-    await message.reply_text("⏳ Procesando la solicitud...")
-    data = fetch_public_data(phone_number)
+    await message.reply_text("⏳ Buscando información...")
+
+    data = get_instagram_info(username, SESSION_ID)
 
     if "error" in data:
-        await message.reply_text(f"❌ Error al obtener los datos: {data['error']}")
-    else:
-        info = (
-            f"📞 **Número:** {phone_number}\n"
-            f"👤 **Nombre:** {data.get('name', 'No disponible')}\n"
-            f"📝 **Bio:** {data.get('bio', 'No disponible')}\n"
-            f"📸 **Foto de perfil:** {data.get('profile_picture', 'No disponible')}\n"
-        )
-        await message.reply_text(info)
+        await message.reply_text(data["error"])
+        return
+
+    info = (
+        f"📊 **Resultados de Instagram**\n\n"
+        f"👤 **Usuario:** @{data['username']}\n"
+        f"🆔 **ID:** {data['id']}\n"
+        f"📛 **Nombre Completo:** {data['full_name']}\n"
+        f"✅ **Verificado:** {'Sí' if data['is_verified'] else 'No'}\n"
+        f"🔒 **Cuenta Privada:** {'Sí' if data['is_private'] else 'No'}\n"
+        f"👥 **Seguidores:** {data['followers']}\n"
+        f"➡️ **Siguiendo:** {data['following']}\n"
+        f"📄 **Biografía:** {data['bio']}\n"
+        f"🌐 **URL Externa:** {data['external_url'] if data['external_url'] else 'Ninguna'}"
+    )
+
+    await message.reply_photo(photo=data["profile_pic"], caption=info)
 
 # Ejecutar el bot
 if __name__ == "__main__":
