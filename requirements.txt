@@ -3,3 +3,4 @@ requests
 tgcrypto
 python-dotenv
 phonenumbers
+pycountry
