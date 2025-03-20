@@ -136,9 +136,9 @@ async def change_session_id(client, callback_query):
     @app.on_message(filters.text & filters.private)
     async def receive_new_session(client, message):
         if message.chat.id == chat_id:
+            global SESSION_ID  # Declarar global al inicio de la función
             new_session_id = message.text.strip()
             if new_session_id != SESSION_ID:  # Verificar si el nuevo SESSION_ID es diferente
-                global SESSION_ID
                 SESSION_ID = new_session_id
                 await message.reply_text(f"✅ **Nuevo SESSION_ID** guardado: `{SESSION_ID}`")
             else:
