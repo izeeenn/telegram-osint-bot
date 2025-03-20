@@ -60,8 +60,12 @@ def get_instagram_info(username, session_id):
 
     obfuscated_data = lookup_response.json()
 
-    email_obfuscated = obfuscated_data.get("obfuscated_email", "No disponible")
-    phone_obfuscated = obfuscated_data.get("obfuscated_phone", "No disponible")
+    # Extraer emails y teléfonos públicos u obfuscados
+    public_email = user_info.get("public_email", "No disponible")
+    obfuscated_email = obfuscated_data.get("obfuscated_email", "No disponible")
+
+    public_phone = user_info.get("public_phone_number", "No disponible")
+    obfuscated_phone = obfuscated_data.get("obfuscated_phone", "No disponible")
 
     # Construir la respuesta
     info = {
@@ -74,8 +78,10 @@ def get_instagram_info(username, session_id):
         "is_verified": user_data.get("is_verified", False),
         "bio": user_data.get("biography", "No disponible"),
         "profile_picture": user_data.get("profile_pic_url_hd", "No disponible"),
-        "email": email_obfuscated,
-        "phone_number": phone_obfuscated
+        "public_email": public_email,
+        "obfuscated_email": obfuscated_email,
+        "public_phone": public_phone,
+        "obfuscated_phone": obfuscated_phone
     }
 
     return info
@@ -115,8 +121,10 @@ async def handle_instagram_username(client, message):
     else:
         info_msg = (
             f"🔎 **Información de Instagram** 🔍\n\n"
-            f"📧 **Email:** {data['email']}\n"
-            f"📞 **Teléfono:** {data['phone_number']}\n"
+            f"📧 **Email público:** {data['public_email']}\n"
+            f"📧 **Email obfuscado:** {data['obfuscated_email']}\n"
+            f"📞 **Teléfono público:** {data['public_phone']}\n"
+            f"📞 **Teléfono obfuscado:** {data['obfuscated_phone']}\n"
             f"👤 **Usuario:** {data['username']}\n"
             f"📛 **Nombre completo:** {data['full_name']}\n"
             f"🆔 **ID de usuario:** {data['user_id']}\n"
