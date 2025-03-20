@@ -25,6 +25,9 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
+# Variable de estado global para rastrear el flujo
+user_state = {}
+
 # Función para obtener datos de Instagram
 def get_instagram_info(username, session_id):
     headers = {"User-Agent": "Instagram 101.0.0.15.120", "x-ig-app-id": "936619743392459"}
@@ -100,13 +103,50 @@ async def start(client, message):
 @app.on_callback_query(filters.regex("search_user"))
 async def search_user(client, callback_query):
     chat_id = callback_query.message.chat.id
+    user_state[chat_id] = 'waiting_for_username'  # Establecemos el estado de espera
+
     await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram que quieres buscar.")
 
-    @app.on_message(filters.text & filters.private)
-    async def receive_username(client, message):
-        if message.chat.id == chat_id:
+# Callback para cambiar SESSION_ID
+@app.on_callback_query(filters.regex("change_session"))
+async def change_session(client, callback_query):
+    chat_id = callback_query.message.chat.id
+    user_state[chat_id] = 'waiting_for_session_id'  # Establecemos el estado de espera
+
+    await callback_query.message.edit_text("🔐 Envíame el **nuevo SESSION_ID**.")
+
+# Manejador de mensajes para recibir el nuevo SESSION_ID o nombre de usuario
+@app.on_message(filters.text & filters.private)
+async def receive_input(client, message):
+    chat_id = message.chat.id
+
+    if chat_id in user_state:
+        state = user_state[chat_id]
+
+        if state == 'waiting_for_session_id':
+            new_session_id = message.text.strip()
+            if new_session_id:  # Aseguramos que no esté vacío
+                global SESSION_ID
+                SESSION_ID = new_session_id
+                os.environ["SESSION_ID"] = new_session_id  # Guardar en el entorno también
+
+                # Informamos al usuario
+                await message.reply_text(f"✅ Nuevo SESSION_ID guardado: `{SESSION_ID}`")
+                
+                # Volver al menú principal
+                await message.reply_text(
+                    f"🌟 **SESSION_ID actual:** `{SESSION_ID}`\n\n"
+                    "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
+                    reply_markup=main_menu()
+                )
+
+                del user_state[chat_id]  # Limpiamos el estado
+
+        elif state == 'waiting_for_username':
             username = message.text.strip()
             await message.reply_text("🔍 Buscando información, espera un momento...")
+
+            # Llamada a la función para obtener la información del usuario de Instagram
             data = get_instagram_info(username, SESSION_ID)
 
             if "error" in data:
@@ -131,35 +171,7 @@ async def search_user(client, callback_query):
                     caption=info_msg  # Información del perfil
                 )
 
-                app.remove_handler(receive_username)
-
-# Callback para cambiar SESSION_ID
-@app.on_callback_query(filters.regex("change_session"))
-async def change_session(client, callback_query):
-    chat_id = callback_query.message.chat.id
-    await callback_query.message.edit_text("🔐 Envíame el **nuevo SESSION_ID**.")
-
-    # Aquí esperamos que el usuario ingrese el nuevo SESSION_ID sin buscar ningún usuario
-    @app.on_message(filters.text & filters.private)
-    async def receive_new_session(client, message):
-        if message.chat.id == chat_id:
-            # Verificamos que el texto ingresado no sea vacío
-            new_session_id = message.text.strip()
-            if new_session_id:  # Aseguramos que no esté vacío
-                global SESSION_ID
-                SESSION_ID = new_session_id
-                os.environ["SESSION_ID"] = new_session_id  # Guardar en el entorno también
-                await message.reply_text(f"✅ Nuevo SESSION_ID guardado: `{SESSION_ID}`")
-                app.remove_handler(receive_new_session)
-                # Volver a mostrar el menú
-                await message.reply_text(
-                    f"🌟 **SESSION_ID actual:** `{SESSION_ID}`\n\n"
-                    "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
-                    reply_markup=main_menu()
-                )
-            else:
-                await message.reply_text("❌ El SESSION_ID no puede estar vacío. Por favor, ingresa uno válido.")
-                app.remove_handler(receive_new_session)
+                del user_state[chat_id]  # Limpiamos el estado
 
 # Callback para volver al menú principal
 @app.on_callback_query(filters.regex("back_to_main"))
