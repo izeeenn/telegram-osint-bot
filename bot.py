@@ -3,7 +3,6 @@ import requests
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
-import time
 
 # Cargar variables de entorno
 load_dotenv()
@@ -33,6 +32,10 @@ def get_instagram_info(username, session_id):
     profile_url = f'https://i.instagram.com/api/v1/users/web_profile_info/?username={username}'
     response = requests.get(profile_url, headers=headers, cookies=cookies)
     
+    # Depuración: Imprimir la respuesta
+    print("Respuesta de perfil:", response.status_code)
+    print(response.text)  # Imprime el cuerpo de la respuesta
+    
     if response.status_code == 404:
         return {"error": "Usuario no encontrado"}
 
@@ -45,6 +48,11 @@ def get_instagram_info(username, session_id):
     # Obtener más detalles con el ID
     user_info_url = f'https://i.instagram.com/api/v1/users/{user_id}/info/'
     user_info_response = requests.get(user_info_url, headers=headers, cookies=cookies)
+    
+    # Depuración: Imprimir la respuesta de más detalles
+    print("Respuesta de info de usuario:", user_info_response.status_code)
+    print(user_info_response.text)
+
     user_info = user_info_response.json().get("user", {})
 
     # Obtener datos obfuscados
@@ -56,18 +64,22 @@ def get_instagram_info(username, session_id):
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             "X-IG-App-ID": "124024574287414"
         },
-        data=lookup_data
+        data=lookup_data,
+        cookies=cookies
     )
+
+    # Depuración: Imprimir la respuesta de la búsqueda de usuario
+    print("Respuesta de búsqueda de usuario:", lookup_response.status_code)
+    print(lookup_response.text)
 
     obfuscated_data = lookup_response.json()
 
-    # Verificar si los datos obfuscados están presentes
-    obfuscated_email = obfuscated_data.get("obfuscated_email", "No disponible")
-    obfuscated_phone = obfuscated_data.get("obfuscated_phone", "No disponible")
-
     # Extraer emails y teléfonos públicos u obfuscados
     public_email = user_info.get("public_email", "No disponible")
+    obfuscated_email = obfuscated_data.get("obfuscated_email", "No disponible")
+
     public_phone = user_info.get("public_phone_number", "No disponible")
+    obfuscated_phone = obfuscated_data.get("obfuscated_phone", "No disponible")
 
     # Construir la respuesta
     info = {
@@ -110,12 +122,9 @@ async def menu_handler(client, callback_query):
 @app.on_message(filters.text & ~filters.command(["start"]))
 async def handle_instagram_username(client, message):
     username = message.text.strip()
-
+    
     await message.reply_text("🔍 Buscando información, espera un momento...")
-
-    # Retraso entre peticiones para evitar ser bloqueado
-    time.sleep(2)
-
+    
     data = get_instagram_info(username, SESSION_ID)
 
     if "error" in data:
