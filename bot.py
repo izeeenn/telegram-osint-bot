@@ -5,9 +5,6 @@ from urllib.parse import quote_plus
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
-import phonenumbers
-from phonenumbers.phonenumberutil import region_code_for_country_code
-import pycountry
 
 # Cargar variables de entorno
 load_dotenv()
@@ -42,7 +39,6 @@ def get_instagram_info(username, session_id):
         return {"error": "No se pudo obtener información del usuario"}
     
     user_id = user_data.get("id", "Desconocido")
-    obfuscated_info = advanced_lookup(username, session_id)
     
     return {
         "username": user_data.get("username", "No disponible"),
@@ -52,27 +48,9 @@ def get_instagram_info(username, session_id):
         "is_private": user_data.get("is_private", False),
         "bio": user_data.get("biography", "No disponible"),
         "profile_picture": user_data.get("profile_pic_url_hd", "No disponible"),
-        "public_email": user_data.get("public_email", "No disponible"),
-        "public_phone": user_data.get("public_phone_number", "No disponible"),
-        "obfuscated_email": obfuscated_info.get("obfuscated_email", "No disponible"),
-        "obfuscated_phone": obfuscated_info.get("obfuscated_phone", "No disponible"),
     }
 
-# Función para obtener datos de correo y teléfono ocultos
-def advanced_lookup(username, session_id):
-    data = "signed_body=SIGNATURE." + quote_plus(json.dumps({"q": username, "skip_recovery": "1"}))
-    headers = {
-        "User-Agent": "Instagram 101.0.0.15.120",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-    }
-    response = requests.post("https://i.instagram.com/api/v1/users/lookup/", headers=headers, data=data, cookies={"sessionid": session_id})
-    
-    try:
-        return response.json()
-    except json.JSONDecodeError:
-        return {"error": "Rate limit"}
-
-# Función para construir el menú dinámico
+# Función para construir el menú principal
 def main_menu():
     botones = [
         [InlineKeyboardButton("🔎 Buscar usuario de Instagram", callback_data="search_user")],
@@ -80,8 +58,8 @@ def main_menu():
     ]
     return InlineKeyboardMarkup(botones)
 
-# Función para mostrar el menú principal
-def session_menu():
+# Función para mostrar el menú de cambio de session_id
+def session_change_menu():
     botones = [
         [InlineKeyboardButton("🔄 Volver al menú principal", callback_data="back_to_main")]
     ]
@@ -119,10 +97,6 @@ async def search_user(client, callback_query):
                     f"👥 **Seguidores:** {data['followers']}\n"
                     f"🔒 **Cuenta privada:** {'Sí' if data['is_private'] else 'No'}\n"
                     f"📝 **Bio:** {data['bio']}\n"
-                    f"📧 **Email público:** {data['public_email']}\n"
-                    f"📞 **Teléfono público:** {data['public_phone']}\n"
-                    f"📧 **Correo oculto:** {data['obfuscated_email']}\n"
-                    f"📞 **Teléfono oculto:** {data['obfuscated_phone']}\n"
                 )
                 
                 # Enviar la foto de perfil al inicio
@@ -139,11 +113,10 @@ async def change_session(client, callback_query):
     chat_id = callback_query.message.chat.id
     await callback_query.message.edit_text("🔐 Envíame el **nuevo SESSION_ID**.")
 
-    # Aquí esperamos que el usuario ingrese el nuevo SESSION_ID sin buscar ningún usuario
+    # Esperamos el nuevo SESSION_ID
     @app.on_message(filters.text & filters.private)
     async def receive_new_session(client, message):
         if message.chat.id == chat_id:
-            # Verificamos que el texto ingresado no sea vacío
             new_session_id = message.text.strip()
             if new_session_id:  # Aseguramos que no esté vacío
                 global SESSION_ID
@@ -151,7 +124,7 @@ async def change_session(client, callback_query):
                 os.environ["SESSION_ID"] = new_session_id  # Guardar en el entorno también
                 await message.reply_text(f"✅ Nuevo SESSION_ID guardado: `{SESSION_ID}`")
                 app.remove_handler(receive_new_session)
-                # Volver a mostrar el menú
+                # Volver a mostrar el menú principal
                 await message.reply_text(
                     f"🌟 **SESSION_ID actual:** `{SESSION_ID}`\n\n"
                     "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
