@@ -20,6 +20,12 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
+# Función para ocultar parte del correo y del teléfono
+def mask_info(info, visible=3):
+    if not info or len(info) < visible * 2:
+        return "No disponible"
+    return f"{info[:visible]}***{info[-visible:]}"
+
 # Función para obtener información de Instagram
 def get_instagram_info(username, session_id):
     url = f'https://i.instagram.com/api/v1/users/web_profile_info/?username={username}'
@@ -38,6 +44,9 @@ def get_instagram_info(username, session_id):
             return {"error": "Usuario no encontrado"}
 
         # Extraer información relevante
+        email = mask_info(data.get("public_email", ""))
+        phone_number = mask_info(data.get("public_phone_number", ""))
+
         info = {
             "username": data.get("username", "No disponible"),
             "full_name": data.get("full_name", "No disponible"),
@@ -48,11 +57,8 @@ def get_instagram_info(username, session_id):
             "is_verified": data.get("is_verified", False),
             "bio": data.get("biography", "No disponible"),
             "profile_picture": data.get("profile_pic_url_hd", "No disponible"),
-            "email": data.get("public_email", "No disponible"),
-            "phone_number": (
-                f'+{data.get("public_phone_country_code", "")} {data.get("public_phone_number", "")}'
-                if data.get("public_phone_number") else "No disponible"
-            )
+            "email": email,
+            "phone_number": phone_number
         }
 
         return info
@@ -95,6 +101,8 @@ async def handle_instagram_username(client, message):
     else:
         info_msg = (
             f"🔎 **Información de Instagram** 🔍\n\n"
+            f"📧 **Email:** {data['email']}\n"
+            f"📞 **Teléfono:** {data['phone_number']}\n"
             f"👤 **Usuario:** {data['username']}\n"
             f"📛 **Nombre completo:** {data['full_name']}\n"
             f"🆔 **ID de usuario:** {data['user_id']}\n"
@@ -103,8 +111,6 @@ async def handle_instagram_username(client, message):
             f"🔒 **Cuenta privada:** {'Sí' if data['is_private'] else 'No'}\n"
             f"✅ **Cuenta verificada:** {'Sí' if data['is_verified'] else 'No'}\n"
             f"📝 **Biografía:** {data['bio']}\n"
-            f"📧 **Email público:** {data['email']}\n"
-            f"📞 **Número de teléfono:** {data['phone_number']}\n"
             f"🖼️ **Foto de perfil:** {data['profile_picture']}\n"
         )
 
