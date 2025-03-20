@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 API_ID = int(os.getenv("API_ID"))
-API_HASH = os.getenv("API_HASH")
+API_HASH = os.getenv("API_HASH"))
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SESSION_ID = os.getenv("SESSION_ID")
 
@@ -32,12 +32,11 @@ def get_instagram_info(username, session_id):
     profile_url = f'https://i.instagram.com/api/v1/users/web_profile_info/?username={username}'
     response = requests.get(profile_url, headers=headers, cookies=cookies)
     
-    # Depuración: Imprimir la respuesta
-    print("Respuesta de perfil:", response.status_code)
-    print(response.text)  # Imprime el cuerpo de la respuesta
-    
     if response.status_code == 404:
         return {"error": "Usuario no encontrado"}
+
+    if response.status_code == 403 and "login_required" in response.text:
+        return {"error": "Se requiere iniciar sesión. La sesión proporcionada no es válida."}
 
     user_data = response.json().get("data", {}).get("user", {})
     if not user_data:
@@ -48,11 +47,6 @@ def get_instagram_info(username, session_id):
     # Obtener más detalles con el ID
     user_info_url = f'https://i.instagram.com/api/v1/users/{user_id}/info/'
     user_info_response = requests.get(user_info_url, headers=headers, cookies=cookies)
-    
-    # Depuración: Imprimir la respuesta de más detalles
-    print("Respuesta de info de usuario:", user_info_response.status_code)
-    print(user_info_response.text)
-
     user_info = user_info_response.json().get("user", {})
 
     # Obtener datos obfuscados
@@ -67,10 +61,6 @@ def get_instagram_info(username, session_id):
         data=lookup_data,
         cookies=cookies
     )
-
-    # Depuración: Imprimir la respuesta de la búsqueda de usuario
-    print("Respuesta de búsqueda de usuario:", lookup_response.status_code)
-    print(lookup_response.text)
 
     obfuscated_data = lookup_response.json()
 
