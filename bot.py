@@ -53,7 +53,7 @@ async def menu_handler(client, callback_query):
         )
 
 # Respuesta al envío de un número de teléfono
-@app.on_message(filters.text & ~filters.command)
+@app.on_message(filters.text & ~filters.command())
 async def handle_phone_number(client, message):
     phone_number = message.text.strip()
     if not phone_number.startswith("+"):
@@ -73,11 +73,6 @@ async def handle_phone_number(client, message):
             f"📸 **Foto de perfil:** {data.get('profile_picture', 'No disponible')}\n"
         )
         await message.reply_text(info)
-
-# Manejo de errores globales
-@app.on_callback_query(filters.command("error"))
-async def error_handler(client, message):
-    await message.reply_text("⚠️ Ocurrió un error. Por favor, inténtalo de nuevo más tarde.")
 
 # Ejecutar el bot
 if __name__ == "__main__":
