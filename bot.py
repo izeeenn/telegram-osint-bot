@@ -3,7 +3,7 @@ import requests
 import json
 from urllib.parse import quote_plus
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 from dotenv import load_dotenv
 import phonenumbers
 from phonenumbers.phonenumberutil import region_code_for_country_code
@@ -74,7 +74,10 @@ def advanced_lookup(username, session_id):
 
 # Función para construir el menú dinámico
 def main_menu():
-    botones = [[InlineKeyboardButton("🔎 Buscar usuario de Instagram", callback_data="search_user")]]
+    botones = [
+        [InlineKeyboardButton("🔎 Buscar usuario de Instagram", callback_data="search_user")],
+        [InlineKeyboardButton("🔄 Cambiar SESSION_ID", callback_data="change_session_id")]
+    ]
     return InlineKeyboardMarkup(botones)
 
 # Comando /start
@@ -113,11 +116,31 @@ async def search_user(client, callback_query):
                     f"📞 **Teléfono público:** {data['public_phone']}\n"
                     f"📧 **Correo oculto:** {data['obfuscated_email']}\n"
                     f"📞 **Teléfono oculto:** {data['obfuscated_phone']}\n"
-                    f"🖼️ [Foto de perfil]({data['profile_picture']})"
+                )
+                
+                # Enviar la foto de perfil al inicio
+                await message.reply_photo(
+                    photo=data['profile_picture'],
+                    caption=info_msg,
+                    disable_web_page_preview=True
                 )
 
-                await message.reply_text(info_msg, disable_web_page_preview=True)
                 app.remove_handler(receive_username)
+
+# Callback para cambiar el SESSION_ID
+@app.on_callback_query(filters.regex("change_session_id"))
+async def change_session_id(client, callback_query):
+    chat_id = callback_query.message.chat.id
+    await callback_query.message.edit_text("🔑 Envíame el nuevo **SESSION_ID** que quieres usar.")
+
+    @app.on_message(filters.text & filters.private)
+    async def receive_new_session(client, message):
+        if message.chat.id == chat_id:
+            new_session_id = message.text.strip()
+            global SESSION_ID
+            SESSION_ID = new_session_id
+            await message.reply_text(f"✅ **Nuevo SESSION_ID** guardado: `{SESSION_ID}`")
+            app.remove_handler(receive_new_session)
 
 # Ejecutar el bot
 if __name__ == "__main__":
