@@ -3,7 +3,7 @@ import requests
 import json
 from urllib.parse import quote_plus
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
 import phonenumbers
 from phonenumbers.phonenumberutil import region_code_for_country_code
@@ -121,32 +121,31 @@ async def search_user(client, callback_query):
                 # Enviar la foto de perfil al inicio
                 await message.reply_photo(
                     photo=data['profile_picture'],
-                    caption=info_msg,
-                    disable_web_page_preview=True
+                    caption=info_msg
                 )
 
                 app.remove_handler(receive_username)
 
-# Callback para cambiar el SESSION_ID
+# Callback para cambiar SESSION_ID
 @app.on_callback_query(filters.regex("change_session_id"))
 async def change_session_id(client, callback_query):
     chat_id = callback_query.message.chat.id
-    await callback_query.message.edit_text("🔑 Envíame el nuevo **SESSION_ID** que quieres usar.")
+    await callback_query.message.edit_text("⚙️ Envíame el nuevo **SESSION_ID**.")
 
     @app.on_message(filters.text & filters.private)
-    async def receive_new_session(client, message):
+    async def receive_new_session_id(client, message):
         if message.chat.id == chat_id:
-            global SESSION_ID  # Declarar global al inicio de la función
             new_session_id = message.text.strip()
-            if new_session_id != SESSION_ID:  # Verificar si el nuevo SESSION_ID es diferente
+            if new_session_id:
+                global SESSION_ID
                 SESSION_ID = new_session_id
-                await message.reply_text(f"✅ **Nuevo SESSION_ID** guardado: `{SESSION_ID}`")
+                # Guardamos el nuevo SESSION_ID en el archivo .env
+                with open('.env', 'w') as env_file:
+                    env_file.write(f"SESSION_ID={SESSION_ID}\n")
+                await message.reply_text(f"🔄 **Nuevo SESSION_ID guardado:** `{SESSION_ID}`")
             else:
-                await message.reply_text("⚠️ El SESSION_ID proporcionado es el mismo que el actual.")
-            
-            # Asegurarse de que el handler se elimina correctamente si aún está registrado
-            if receive_new_session in app.handlers:
-                app.remove_handler(receive_new_session)
+                await message.reply_text("❌ **Error:** No se proporcionó un SESSION_ID válido.")
+            app.remove_handler(receive_new_session_id)
 
 # Ejecutar el bot
 if __name__ == "__main__":
