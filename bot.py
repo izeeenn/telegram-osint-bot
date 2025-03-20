@@ -8,11 +8,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+API_ID = os.getenv("API_ID")
+API_HASH = os.getenv("API_HASH")
 SESSION_ID = os.getenv("SESSION_ID")
 
-# Configuración del cliente de Pyrogram
+# Configuración del cliente de Pyrogram (Faltaban API_ID y API_HASH)
 app = Client(
     "osint_bot",
+    api_id=int(API_ID),
+    api_hash=API_HASH,
     bot_token=BOT_TOKEN
 )
 
