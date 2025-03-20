@@ -49,13 +49,15 @@ async def add_session(client, callback_query):
     chat_id = callback_query.message.chat.id
     await callback_query.message.edit_text("✍️ Envíame tu `SESSION_ID` para continuar.")
 
-    session_message = await app.wait_for_message(chat_id=chat_id, filters=filters.text)
-    session_data[chat_id] = session_message.text.strip()
-
-    await callback_query.message.reply_text(
-        "✅ **SESSION_ID guardado correctamente.**\n\nAhora puedes buscar un usuario de Instagram desde el menú.",
-        reply_markup=main_menu(chat_id)
-    )
+    @app.on_message(filters.text & filters.private)
+    async def receive_session(client, message):
+        if message.chat.id == chat_id:
+            session_data[chat_id] = message.text.strip()
+            await message.reply_text(
+                "✅ **SESSION_ID guardado correctamente.**\n\nAhora puedes buscar un usuario de Instagram desde el menú.",
+                reply_markup=main_menu(chat_id)
+            )
+            app.remove_handler(receive_session)
 
 # Callback para buscar usuario
 @app.on_callback_query(filters.regex("search_user"))
@@ -70,30 +72,33 @@ async def search_user(client, callback_query):
         return
 
     await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram que quieres buscar.")
-    username_message = await app.wait_for_message(chat_id=chat_id, filters=filters.text)
-    username = username_message.text.strip()
 
-    await callback_query.message.reply_text("🔍 Buscando información, espera un momento...")
-    data = get_instagram_info(username, session_data[chat_id])
+    @app.on_message(filters.text & filters.private)
+    async def receive_username(client, message):
+        if message.chat.id == chat_id:
+            username = message.text.strip()
+            await message.reply_text("🔍 Buscando información, espera un momento...")
+            data = get_instagram_info(username, session_data[chat_id])
 
-    if "error" in data:
-        await callback_query.message.reply_text(f"❌ Error: {data['error']}")
-    else:
-        info_msg = (
-            f"📌 **Usuario:** {data['username']}\n"
-            f"📛 **Nombre:** {data['full_name']}\n"
-            f"🆔 **ID:** {data['user_id']}\n"
-            f"👥 **Seguidores:** {data['followers']}\n"
-            f"🔒 **Cuenta privada:** {'Sí' if data['is_private'] else 'No'}\n"
-            f"📝 **Bio:** {data['bio']}\n"
-            f"📧 **Email:** {data['public_email']}\n"
-            f"📞 **Teléfono:** {data['public_phone']}\n"
-            f"📧 **Correo oculto:** {data['obfuscated_email']}\n"
-            f"📞 **Teléfono oculto:** {data['obfuscated_phone']}\n"
-            f"🖼️ [Foto de perfil]({data['profile_picture']})"
-        )
+            if "error" in data:
+                await message.reply_text(f"❌ Error: {data['error']}")
+            else:
+                info_msg = (
+                    f"📌 **Usuario:** {data['username']}\n"
+                    f"📛 **Nombre:** {data['full_name']}\n"
+                    f"🆔 **ID:** {data['user_id']}\n"
+                    f"👥 **Seguidores:** {data['followers']}\n"
+                    f"🔒 **Cuenta privada:** {'Sí' if data['is_private'] else 'No'}\n"
+                    f"📝 **Bio:** {data['bio']}\n"
+                    f"📧 **Email:** {data['public_email']}\n"
+                    f"📞 **Teléfono:** {data['public_phone']}\n"
+                    f"📧 **Correo oculto:** {data['obfuscated_email']}\n"
+                    f"📞 **Teléfono oculto:** {data['obfuscated_phone']}\n"
+                    f"🖼️ [Foto de perfil]({data['profile_picture']})"
+                )
 
-        await callback_query.message.reply_text(info_msg, disable_web_page_preview=False)
+                await message.reply_text(info_msg, disable_web_page_preview=True)
+                app.remove_handler(receive_username)
 
 # Función para obtener datos de Instagram
 def get_instagram_info(username, session_id):
