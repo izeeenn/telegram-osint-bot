@@ -12,6 +12,7 @@ load_dotenv()
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+SESSION_ID = os.getenv("SESSION_ID")  # Cargar SESSION_ID desde .env
 
 # Configuración del bot
 app = Client(
@@ -21,56 +22,24 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
-# Variable global para almacenar el SESSION_ID por usuario
-session_data = {}
-
 # Función para construir el menú dinámico
-def main_menu(chat_id):
-    botones = [[InlineKeyboardButton("🛠 Añadir SESSION_ID", callback_data="add_session")]]
-
-    if chat_id in session_data:
-        botones.append([InlineKeyboardButton("🔎 Buscar usuario de Instagram", callback_data="search_user")])
-
+def main_menu():
+    botones = [[InlineKeyboardButton("🔎 Buscar usuario de Instagram", callback_data="search_user")]]
     return InlineKeyboardMarkup(botones)
 
 # Comando /start
 @app.on_message(filters.command("start"))
 async def start(client, message):
-    chat_id = message.chat.id
     await message.reply_text(
-        f"🌟 **SESSION_ID actual:** `{session_data.get(chat_id, 'No disponible')}`\n\n"
+        f"🌟 **SESSION_ID actual:** `{SESSION_ID}`\n\n"
         "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
-        reply_markup=main_menu(chat_id)
+        reply_markup=main_menu()
     )
-
-# Callback para añadir SESSION_ID
-@app.on_callback_query(filters.regex("add_session"))
-async def add_session(client, callback_query):
-    chat_id = callback_query.message.chat.id
-    await callback_query.message.edit_text("✍️ Envíame tu `SESSION_ID` para continuar.")
-
-    @app.on_message(filters.text & filters.private)
-    async def receive_session(client, message):
-        if message.chat.id == chat_id:
-            session_data[chat_id] = message.text.strip()
-            await message.reply_text(
-                "✅ **SESSION_ID guardado correctamente.**\n\nAhora puedes buscar un usuario de Instagram desde el menú.",
-                reply_markup=main_menu(chat_id)
-            )
-            app.remove_handler(receive_session)
 
 # Callback para buscar usuario
 @app.on_callback_query(filters.regex("search_user"))
 async def search_user(client, callback_query):
     chat_id = callback_query.message.chat.id
-
-    if chat_id not in session_data:
-        await callback_query.message.edit_text(
-            "⚠️ No has proporcionado un **SESSION_ID**. Añádelo antes de continuar.",
-            reply_markup=main_menu(chat_id)
-        )
-        return
-
     await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram que quieres buscar.")
 
     @app.on_message(filters.text & filters.private)
@@ -78,7 +47,7 @@ async def search_user(client, callback_query):
         if message.chat.id == chat_id:
             username = message.text.strip()
             await message.reply_text("🔍 Buscando información, espera un momento...")
-            data = get_instagram_info(username, session_data[chat_id])
+            data = get_instagram_info(username, SESSION_ID)
 
             if "error" in data:
                 await message.reply_text(f"❌ Error: {data['error']}")
