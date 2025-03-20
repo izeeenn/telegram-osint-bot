@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 API_ID = int(os.getenv("API_ID"))
-API_HASH = os.getenv("API_HASH"))
+API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SESSION_ID = os.getenv("SESSION_ID")
 
@@ -35,9 +35,6 @@ def get_instagram_info(username, session_id):
     if response.status_code == 404:
         return {"error": "Usuario no encontrado"}
 
-    if response.status_code == 403 and "login_required" in response.text:
-        return {"error": "Se requiere iniciar sesión. La sesión proporcionada no es válida."}
-
     user_data = response.json().get("data", {}).get("user", {})
     if not user_data:
         return {"error": "No se pudo obtener información del usuario"}
@@ -58,8 +55,7 @@ def get_instagram_info(username, session_id):
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             "X-IG-App-ID": "124024574287414"
         },
-        data=lookup_data,
-        cookies=cookies
+        data=lookup_data
     )
 
     obfuscated_data = lookup_response.json()
@@ -95,9 +91,10 @@ def get_instagram_info(username, session_id):
 async def start(client, message):
     await message.reply_text(
         "¡Bienvenido al bot OSINT de Instagram! 🔍\n\nSelecciona una opción:",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("Buscar usuario de Instagram", callback_data="search_instagram")
-        ]])
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("Buscar usuario de Instagram", callback_data="search_instagram")],
+            [InlineKeyboardButton("Ayuda", callback_data="help")]
+        ])
     )
 
 # Manejo de botones
@@ -107,9 +104,11 @@ async def menu_handler(client, callback_query):
 
     if data == "search_instagram":
         await callback_query.message.edit_text("Envíame el nombre de usuario de Instagram que quieres buscar.")
+    elif data == "help":
+        await callback_query.message.edit_text("Este bot obtiene información pública de cuentas de Instagram. Introduce un nombre de usuario para comenzar.")
 
 # Buscar usuario de Instagram
-@app.on_message(filters.text & ~filters.command(["start"]))
+@app.on_message(filters.text & ~filters.command(["start", "help"]))
 async def handle_instagram_username(client, message):
     username = message.text.strip()
     
