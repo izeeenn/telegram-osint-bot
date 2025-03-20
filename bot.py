@@ -1,7 +1,7 @@
 import os
 import requests
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from dotenv import load_dotenv
 
 # Cargar variables de entorno
@@ -10,7 +10,6 @@ load_dotenv()
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-SESSION_ID = os.getenv("SESSION_ID")
 
 # Configuración del bot
 app = Client(
@@ -90,31 +89,47 @@ def get_instagram_info(username, session_id):
 @app.on_message(filters.command("start"))
 async def start(client, message):
     await message.reply_text(
-        "¡Bienvenido al bot OSINT de Instagram! 🔍\n\nSelecciona una opción:",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("Buscar usuario de Instagram", callback_data="search_instagram")],
-            [InlineKeyboardButton("Ayuda", callback_data="help")]
-        ])
+        "¡Bienvenido al bot OSINT de Instagram! 🔍\n\nPor favor, introduce tu session_id de Instagram para comenzar:",
+        reply_markup=ReplyKeyboardMarkup(
+            [[KeyboardButton("Enviar session_id")]], 
+            one_time_keyboard=True
+        )
     )
 
-# Manejo de botones
-@app.on_callback_query()
-async def menu_handler(client, callback_query):
-    data = callback_query.data
-
-    if data == "search_instagram":
-        await callback_query.message.edit_text("Envíame el nombre de usuario de Instagram que quieres buscar.")
-    elif data == "help":
-        await callback_query.message.edit_text("Este bot obtiene información pública de cuentas de Instagram. Introduce un nombre de usuario para comenzar.")
+# Recibir session_id
+@app.on_message(filters.text & ~filters.command(["start", "help"]))
+async def receive_session_id(client, message):
+    session_id = message.text.strip()
+    
+    # Verificar si el session_id parece válido (esto es solo una validación básica)
+    if len(session_id) > 10:  # Comprobamos si tiene longitud suficiente
+        # Almacenar el session_id (se puede almacenar temporalmente en memoria o en base de datos si fuera necesario)
+        user_id = message.from_user.id
+        client_data = app.get_chat(user_id).get("session_id", None)
+        
+        # Guardar session_id en el diccionario o base de datos (aquí solo lo estamos almacenando en la memoria)
+        app.storage[user_id] = {"session_id": session_id}
+        
+        await message.reply_text(f"Session ID guardada correctamente. Ahora, envíame un nombre de usuario de Instagram para buscar.")
+    else:
+        await message.reply_text("❌ El session_id no es válido. Por favor, revisa e intenta nuevamente.")
 
 # Buscar usuario de Instagram
-@app.on_message(filters.text & ~filters.command(["start", "help"]))
+@app.on_message(filters.text & ~filters.command("start"))
 async def handle_instagram_username(client, message):
     username = message.text.strip()
-    
+
+    # Obtener session_id almacenado
+    user_id = message.from_user.id
+    user_data = app.storage.get(user_id, None)
+    if not user_data or "session_id" not in user_data:
+        await message.reply_text("❌ No se ha guardado tu session_id. Por favor, envíalo primero.")
+        return
+
+    session_id = user_data["session_id"]
     await message.reply_text("🔍 Buscando información, espera un momento...")
-    
-    data = get_instagram_info(username, SESSION_ID)
+
+    data = get_instagram_info(username, session_id)
 
     if "error" in data:
         await message.reply_text(f"❌ Error: {data['error']}")
@@ -140,4 +155,5 @@ async def handle_instagram_username(client, message):
 
 # Ejecutar el bot
 if __name__ == "__main__":
+    app.storage = {}  # Asegúrate de usar un diccionario para almacenar los session_id de cada usuario
     app.run()
