@@ -25,9 +25,6 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
-# Variable de estado global para rastrear el flujo
-user_state = {}
-
 # Función para obtener datos de Instagram
 def get_instagram_info(username, session_id):
     headers = {"User-Agent": "Instagram 101.0.0.15.120", "x-ig-app-id": "936619743392459"}
@@ -35,31 +32,42 @@ def get_instagram_info(username, session_id):
     
     # Obtener información básica del perfil
     profile_url = f'https://i.instagram.com/api/v1/users/web_profile_info/?username={username}'
-    response = requests.get(profile_url, headers=headers, cookies=cookies)
     
-    if response.status_code == 404:
-        return {"error": "Usuario no encontrado"}
-    
-    user_data = response.json().get("data", {}).get("user", {})
-    if not user_data:
-        return {"error": "No se pudo obtener información del usuario"}
-    
-    user_id = user_data.get("id", "Desconocido")
-    obfuscated_info = advanced_lookup(username, session_id)
-    
-    return {
-        "username": user_data.get("username", "No disponible"),
-        "full_name": user_data.get("full_name", "No disponible"),
-        "user_id": user_id,
-        "followers": user_data.get("edge_followed_by", {}).get("count", "No disponible"),
-        "is_private": user_data.get("is_private", False),
-        "bio": user_data.get("biography", "No disponible"),
-        "profile_picture": user_data.get("profile_pic_url_hd", "No disponible"),
-        "public_email": user_data.get("public_email", "No disponible"),
-        "public_phone": user_data.get("public_phone_number", "No disponible"),
-        "obfuscated_email": obfuscated_info.get("obfuscated_email", "No disponible"),
-        "obfuscated_phone": obfuscated_info.get("obfuscated_phone", "No disponible"),
-    }
+    try:
+        response = requests.get(profile_url, headers=headers, cookies=cookies)
+        
+        # Verificar el código de estado de la respuesta
+        if response.status_code != 200:
+            return {"error": f"Error al contactar con Instagram, código de estado: {response.status_code}"}
+        
+        # Intentar decodificar la respuesta como JSON
+        try:
+            user_data = response.json().get("data", {}).get("user", {})
+        except json.JSONDecodeError:
+            return {"error": "La respuesta no es un JSON válido."}
+        
+        if not user_data:
+            return {"error": "Usuario no encontrado o respuesta malformada."}
+        
+        obfuscated_info = advanced_lookup(username, session_id)
+        
+        return {
+            "username": user_data.get("username", "No disponible"),
+            "full_name": user_data.get("full_name", "No disponible"),
+            "user_id": user_data.get("id", "Desconocido"),
+            "followers": user_data.get("edge_followed_by", {}).get("count", "No disponible"),
+            "is_private": user_data.get("is_private", False),
+            "bio": user_data.get("biography", "No disponible"),
+            "profile_picture": user_data.get("profile_pic_url_hd", "No disponible"),
+            "public_email": user_data.get("public_email", "No disponible"),
+            "public_phone": user_data.get("public_phone_number", "No disponible"),
+            "obfuscated_email": obfuscated_info.get("obfuscated_email", "No disponible"),
+            "obfuscated_phone": obfuscated_info.get("obfuscated_phone", "No disponible"),
+        }
+
+    except requests.exceptions.RequestException as e:
+        # Manejo de errores en la solicitud HTTP
+        return {"error": f"Error en la solicitud a Instagram: {str(e)}"}
 
 # Función para obtener datos de correo y teléfono ocultos
 def advanced_lookup(username, session_id):
@@ -103,50 +111,13 @@ async def start(client, message):
 @app.on_callback_query(filters.regex("search_user"))
 async def search_user(client, callback_query):
     chat_id = callback_query.message.chat.id
-    user_state[chat_id] = 'waiting_for_username'  # Establecemos el estado de espera
-
     await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram que quieres buscar.")
 
-# Callback para cambiar SESSION_ID
-@app.on_callback_query(filters.regex("change_session"))
-async def change_session(client, callback_query):
-    chat_id = callback_query.message.chat.id
-    user_state[chat_id] = 'waiting_for_session_id'  # Establecemos el estado de espera
-
-    await callback_query.message.edit_text("🔐 Envíame el **nuevo SESSION_ID**.")
-
-# Manejador de mensajes para recibir el nuevo SESSION_ID o nombre de usuario
-@app.on_message(filters.text & filters.private)
-async def receive_input(client, message):
-    chat_id = message.chat.id
-
-    if chat_id in user_state:
-        state = user_state[chat_id]
-
-        if state == 'waiting_for_session_id':
-            new_session_id = message.text.strip()
-            if new_session_id:  # Aseguramos que no esté vacío
-                global SESSION_ID
-                SESSION_ID = new_session_id
-                os.environ["SESSION_ID"] = new_session_id  # Guardar en el entorno también
-
-                # Informamos al usuario
-                await message.reply_text(f"✅ Nuevo SESSION_ID guardado: `{SESSION_ID}`")
-                
-                # Volver al menú principal
-                await message.reply_text(
-                    f"🌟 **SESSION_ID actual:** `{SESSION_ID}`\n\n"
-                    "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
-                    reply_markup=main_menu()
-                )
-
-                del user_state[chat_id]  # Limpiamos el estado
-
-        elif state == 'waiting_for_username':
+    @app.on_message(filters.text & filters.private)
+    async def receive_username(client, message):
+        if message.chat.id == chat_id:
             username = message.text.strip()
             await message.reply_text("🔍 Buscando información, espera un momento...")
-
-            # Llamada a la función para obtener la información del usuario de Instagram
             data = get_instagram_info(username, SESSION_ID)
 
             if "error" in data:
@@ -171,7 +142,35 @@ async def receive_input(client, message):
                     caption=info_msg  # Información del perfil
                 )
 
-                del user_state[chat_id]  # Limpiamos el estado
+                app.remove_handler(receive_username)
+
+# Callback para cambiar SESSION_ID
+@app.on_callback_query(filters.regex("change_session"))
+async def change_session(client, callback_query):
+    chat_id = callback_query.message.chat.id
+    await callback_query.message.edit_text("🔐 Envíame el **nuevo SESSION_ID**.")
+
+    # Aquí esperamos que el usuario ingrese el nuevo SESSION_ID sin buscar ningún usuario
+    @app.on_message(filters.text & filters.private)
+    async def receive_new_session(client, message):
+        if message.chat.id == chat_id:
+            # Verificamos que el texto ingresado no sea vacío
+            new_session_id = message.text.strip()
+            if new_session_id:  # Aseguramos que no esté vacío
+                global SESSION_ID
+                SESSION_ID = new_session_id
+                os.environ["SESSION_ID"] = new_session_id  # Guardar en el entorno también
+                await message.reply_text(f"✅ Nuevo SESSION_ID guardado: `{SESSION_ID}`")
+                app.remove_handler(receive_new_session)
+                # Volver a mostrar el menú
+                await message.reply_text(
+                    f"🌟 **SESSION_ID actual:** `{SESSION_ID}`\n\n"
+                    "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
+                    reply_markup=main_menu()
+                )
+            else:
+                await message.reply_text("❌ El SESSION_ID no puede estar vacío. Por favor, ingresa uno válido.")
+                app.remove_handler(receive_new_session)
 
 # Callback para volver al menú principal
 @app.on_callback_query(filters.regex("back_to_main"))
