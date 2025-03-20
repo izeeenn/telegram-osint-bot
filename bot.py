@@ -50,7 +50,7 @@ async def add_session(client, callback_query):
     await callback_query.message.edit_text("✍️ Envíame tu `SESSION_ID` para continuar.")
 
     # Esperar el mensaje del usuario
-    session_message = await client.listen(callback_query.message.chat.id, filters=filters.text)
+    session_message = await app.wait_for_message(chat_id=callback_query.message.chat.id, filters=filters.text)
     session_id = session_message.text.strip()
 
     if not session_id:
@@ -79,7 +79,7 @@ async def search_user(client, callback_query):
     await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram que quieres buscar.")
 
     # Esperar el mensaje del usuario con el nombre
-    username_message = await client.listen(callback_query.message.chat.id, filters=filters.text)
+    username_message = await app.wait_for_message(chat_id=callback_query.message.chat.id, filters=filters.text)
     username = username_message.text.strip()
 
     await callback_query.message.reply_text("🔍 Buscando información, espera un momento...")
