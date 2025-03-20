@@ -80,6 +80,13 @@ def main_menu():
     ]
     return InlineKeyboardMarkup(botones)
 
+# Función para mostrar el menú principal
+def session_menu():
+    botones = [
+        [InlineKeyboardButton("🔄 Volver al menú principal", callback_data="back_to_main")]
+    ]
+    return InlineKeyboardMarkup(botones)
+
 # Comando /start
 @app.on_message(filters.command("start"))
 async def start(client, message):
@@ -132,21 +139,36 @@ async def change_session(client, callback_query):
     chat_id = callback_query.message.chat.id
     await callback_query.message.edit_text("🔐 Envíame el **nuevo SESSION_ID**.")
 
+    # Aquí esperamos que el usuario ingrese el nuevo SESSION_ID sin buscar ningún usuario
     @app.on_message(filters.text & filters.private)
     async def receive_new_session(client, message):
         if message.chat.id == chat_id:
-            global SESSION_ID
+            # Verificamos que el texto ingresado no sea vacío
             new_session_id = message.text.strip()
-            SESSION_ID = new_session_id
-            os.environ["SESSION_ID"] = new_session_id  # Guardar en el entorno también
-            await message.reply_text(f"✅ Nuevo SESSION_ID guardado: `{SESSION_ID}`")
-            app.remove_handler(receive_new_session)
-            # Volver a mostrar el menú
-            await message.reply_text(
-                f"🌟 **SESSION_ID actual:** `{SESSION_ID}`\n\n"
-                "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
-                reply_markup=main_menu()
-            )
+            if new_session_id:  # Aseguramos que no esté vacío
+                global SESSION_ID
+                SESSION_ID = new_session_id
+                os.environ["SESSION_ID"] = new_session_id  # Guardar en el entorno también
+                await message.reply_text(f"✅ Nuevo SESSION_ID guardado: `{SESSION_ID}`")
+                app.remove_handler(receive_new_session)
+                # Volver a mostrar el menú
+                await message.reply_text(
+                    f"🌟 **SESSION_ID actual:** `{SESSION_ID}`\n\n"
+                    "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
+                    reply_markup=main_menu()
+                )
+            else:
+                await message.reply_text("❌ El SESSION_ID no puede estar vacío. Por favor, ingresa uno válido.")
+                app.remove_handler(receive_new_session)
+
+# Callback para volver al menú principal
+@app.on_callback_query(filters.regex("back_to_main"))
+async def back_to_main(client, callback_query):
+    await callback_query.message.edit_text(
+        f"🌟 **SESSION_ID actual:** `{SESSION_ID}`\n\n"
+        "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
+        reply_markup=main_menu()
+    )
 
 # Ejecutar el bot
 if __name__ == "__main__":
