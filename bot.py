@@ -90,6 +90,7 @@ def get_instagram_info(username, session_id):
 
 # Crear el menú principal
 def main_menu():
+    global session_id
     buttons = [
         [InlineKeyboardButton("Añadir SESSION_ID", callback_data="add_session")]
     ]
