@@ -91,18 +91,8 @@ async def start(client, message):
     await message.reply_text(
         "¡Bienvenido al bot OSINT de Instagram! 🔍\n\n"
         "Por favor, proporciona tu **SESSION_ID** para comenzar. Esto es necesario para realizar las búsquedas.\n\n"
-        "Cuando tengas tu SESSION_ID listo, envíalo aquí.",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("Buscar usuario de Instagram", callback_data="search_instagram")
-        ]])
+        "Cuando tengas tu SESSION_ID listo, envíalo aquí."
     )
-
-# Manejo de botones
-@app.on_callback_query()
-async def menu_handler(client, callback_query):
-    data = callback_query.data
-    if data == "search_instagram":
-        await callback_query.message.edit_text("Primero, debes proporcionar tu SESSION_ID. Es necesario para buscar usuarios.")
 
 # Guardar y usar el SESSION_ID solo una vez
 @app.on_message(filters.text & ~filters.command(["start", "help"]))
@@ -120,11 +110,13 @@ async def handle_session_id(client, message):
         "Ahora puedes buscar un usuario de Instagram. Envíame el nombre de usuario que quieres buscar."
     )
 
-    # Deshabilitar la opción de dar el session_id nuevamente
-    app.remove_handler(menu_handler)  # Eliminar el menú de inicio para no pedir el session_id otra vez
+    # Eliminar el manejador que espera el SESSION_ID para no volver a pedirlo
+    app.remove_handler(handle_session_id)
+
+    # Añadir un manejador para buscar usuarios de Instagram
+    app.add_handler(filters.text & ~filters.command(["start", "help"]) & filters.regex(r"^[a-zA-Z0-9_.]+$"), handle_instagram_username)
 
 # Buscar usuario de Instagram
-@app.on_message(filters.text & ~filters.command(["start", "help"]) & filters.regex(r"^[a-zA-Z0-9_.]+$"))
 async def handle_instagram_username(client, message):
     username = message.text.strip()
 
