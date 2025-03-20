@@ -20,51 +20,65 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
-# Función para ocultar parte del correo y del teléfono
-def mask_info(info, visible=3):
-    if not info or len(info) < visible * 2:
-        return "No disponible"
-    return f"{info[:visible]}***{info[-visible:]}"
-
-# Función para obtener información de Instagram
+# Función para obtener información de Instagram (incluyendo datos obfuscados)
 def get_instagram_info(username, session_id):
-    url = f'https://i.instagram.com/api/v1/users/web_profile_info/?username={username}'
     headers = {
         "User-Agent": "Instagram 101.0.0.15.120",
         "x-ig-app-id": "936619743392459"
     }
     cookies = {"sessionid": session_id}
 
-    try:
-        response = requests.get(url, headers=headers, cookies=cookies)
-        response.raise_for_status()
-        data = response.json().get("data", {}).get("user", {})
+    # Obtener ID del usuario
+    profile_url = f'https://i.instagram.com/api/v1/users/web_profile_info/?username={username}'
+    response = requests.get(profile_url, headers=headers, cookies=cookies)
+    
+    if response.status_code == 404:
+        return {"error": "Usuario no encontrado"}
 
-        if not data:
-            return {"error": "Usuario no encontrado"}
+    user_data = response.json().get("data", {}).get("user", {})
+    if not user_data:
+        return {"error": "No se pudo obtener información del usuario"}
 
-        # Extraer información relevante
-        email = mask_info(data.get("public_email", ""))
-        phone_number = mask_info(data.get("public_phone_number", ""))
+    user_id = user_data.get("id", "Desconocido")
 
-        info = {
-            "username": data.get("username", "No disponible"),
-            "full_name": data.get("full_name", "No disponible"),
-            "user_id": data.get("id", "No disponible"),
-            "followers": data.get("edge_followed_by", {}).get("count", "No disponible"),
-            "following": data.get("edge_follow", {}).get("count", "No disponible"),
-            "is_private": data.get("is_private", False),
-            "is_verified": data.get("is_verified", False),
-            "bio": data.get("biography", "No disponible"),
-            "profile_picture": data.get("profile_pic_url_hd", "No disponible"),
-            "email": email,
-            "phone_number": phone_number
-        }
+    # Obtener más detalles con el ID
+    user_info_url = f'https://i.instagram.com/api/v1/users/{user_id}/info/'
+    user_info_response = requests.get(user_info_url, headers=headers, cookies=cookies)
+    user_info = user_info_response.json().get("user", {})
 
-        return info
+    # Obtener datos obfuscados
+    lookup_data = f"signed_body=SIGNATURE.{{\"q\":\"{username}\",\"skip_recovery\":\"1\"}}"
+    lookup_response = requests.post(
+        "https://i.instagram.com/api/v1/users/lookup/",
+        headers={
+            "User-Agent": "Instagram 101.0.0.15.120",
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "X-IG-App-ID": "124024574287414"
+        },
+        data=lookup_data
+    )
 
-    except requests.exceptions.RequestException as e:
-        return {"error": str(e)}
+    obfuscated_data = lookup_response.json()
+
+    email_obfuscated = obfuscated_data.get("obfuscated_email", "No disponible")
+    phone_obfuscated = obfuscated_data.get("obfuscated_phone", "No disponible")
+
+    # Construir la respuesta
+    info = {
+        "username": user_data.get("username", "No disponible"),
+        "full_name": user_data.get("full_name", "No disponible"),
+        "user_id": user_id,
+        "followers": user_data.get("edge_followed_by", {}).get("count", "No disponible"),
+        "following": user_data.get("edge_follow", {}).get("count", "No disponible"),
+        "is_private": user_data.get("is_private", False),
+        "is_verified": user_data.get("is_verified", False),
+        "bio": user_data.get("biography", "No disponible"),
+        "profile_picture": user_data.get("profile_pic_url_hd", "No disponible"),
+        "email": email_obfuscated,
+        "phone_number": phone_obfuscated
+    }
+
+    return info
 
 # Comando /start
 @app.on_message(filters.command("start"))
