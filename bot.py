@@ -136,10 +136,17 @@ async def change_session(client, callback_query):
     async def receive_new_session(client, message):
         if message.chat.id == chat_id:
             global SESSION_ID
-            SESSION_ID = message.text.strip()
-            os.environ["SESSION_ID"] = SESSION_ID  # Guardar en el entorno también
+            new_session_id = message.text.strip()
+            SESSION_ID = new_session_id
+            os.environ["SESSION_ID"] = new_session_id  # Guardar en el entorno también
             await message.reply_text(f"✅ Nuevo SESSION_ID guardado: `{SESSION_ID}`")
             app.remove_handler(receive_new_session)
+            # Volver a mostrar el menú
+            await message.reply_text(
+                f"🌟 **SESSION_ID actual:** `{SESSION_ID}`\n\n"
+                "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
+                reply_markup=main_menu()
+            )
 
 # Ejecutar el bot
 if __name__ == "__main__":
