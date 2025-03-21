@@ -108,9 +108,7 @@ async def confirm_send_email(client, callback_query):
     chat_id = callback_query.message.chat.id
     email_data = draft_emails.get(chat_id, {})
     
-    response = send_email(
-        email_data.get("fake_name"),
-        email_data.get("fake_sender"),
+    response = send_simple_message(
         email_data.get("recipient"),
         email_data.get("subject"),
         email_data.get("email_message")
@@ -121,16 +119,16 @@ async def confirm_send_email(client, callback_query):
     else:
         await callback_query.message.edit_text("❌ **Error al enviar el correo.**")
 
-def send_email(fake_name, fake_sender, recipient, subject, email_message):
+def send_simple_message(to, subject, message):
     try:
         response = requests.post(
             f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages",
             auth=("api", MAILGUN_API_KEY),
             data={
-                "from": f"{fake_name} <{fake_sender}>",
-                "to": recipient,
+                "from": "Mailgun Sandbox <postmaster@{MAILGUN_DOMAIN}>",
+                "to": to,
                 "subject": subject,
-                "html": email_message
+                "text": message
             }
         )
         return response.status_code == 200
