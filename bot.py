@@ -31,14 +31,14 @@ def main_menu():
         [InlineKeyboardButton("🛠️ Tools", callback_data="menu_tools")]
     ])
 
-# ✅ Función para mostrar el menú de Instagram
+# ✅ Menú de Instagram
 def instagram_menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔍 Buscar usuario", callback_data="search_instagram")],
         [InlineKeyboardButton("⬅️ Volver", callback_data="back_main")]
     ])
 
-# ✅ Función para mostrar el menú de herramientas
+# ✅ Menú de herramientas
 def tools_menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📧 Email Spoofing", callback_data="email_spoofing")],
@@ -48,10 +48,7 @@ def tools_menu():
 # ✅ Comando /start con menú principal
 @app.on_message(filters.command("start") & filters.private)
 async def start(client, message):
-    await message.reply_text(
-        "👋 ¡Bienvenido!\nSelecciona una opción:",
-        reply_markup=main_menu()
-    )
+    await message.reply_text("👋 ¡Bienvenido!\nSelecciona una opción:", reply_markup=main_menu())
 
 # ✅ Manejo de callbacks para el menú
 @app.on_callback_query()
@@ -70,10 +67,11 @@ async def menu_navigation(client, callback_query):
     elif data == "search_instagram":
         await callback_query.message.edit_text("🔎 Envíame el **nombre de usuario** de Instagram.")
 
-        @app.on_message(filters.text & filters.private)
-        async def receive_username(client, message):
-            username = message.text.strip()
-            await search_instagram(client, message, username)
+        # ✅ Esperar respuesta sin crear un nuevo handler
+        response = await client.listen(callback_query.message.chat.id, filters=filters.text, timeout=60)
+        if response:
+            username = response.text.strip()
+            await search_instagram(client, callback_query.message, username)
 
 # ✅ Función para buscar usuarios en Instagram
 async def search_instagram(client, message, username):
