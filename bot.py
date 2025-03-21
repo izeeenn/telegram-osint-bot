@@ -8,6 +8,9 @@ from dotenv import load_dotenv
 import phonenumbers
 from phonenumbers.phonenumberutil import region_code_for_country_code
 import pycountry
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # Cargar variables de entorno
 load_dotenv()
@@ -72,11 +75,35 @@ def advanced_lookup(username, session_id):
     except json.JSONDecodeError:
         return {"error": "Rate limit"}
 
+# Función para enviar correo (spoofing)
+def send_email(mail_to, subject, message, mail_from, count):
+    smtp_server = "smtp.gmail.com"
+    smtp_port = 587
+    smtp_user = os.getenv("SMTP_USER")  # Gmail user
+    smtp_pass = os.getenv("SMTP_PASS")  # Gmail password
+
+    msg = MIMEMultipart()
+    msg['From'] = mail_from
+    msg['To'] = mail_to
+    msg['Subject'] = subject
+    msg.attach(MIMEText(message, 'plain'))
+
+    try:
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            for _ in range(count):
+                server.sendmail(mail_from, mail_to, msg.as_string())
+            return "Correo enviado correctamente"
+    except Exception as e:
+        return f"Error al enviar correo: {str(e)}"
+
 # Función para construir el menú dinámico
 def main_menu():
     botones = [
         [InlineKeyboardButton("🔎 Buscar usuario de Instagram", callback_data="search_user")],
-        [InlineKeyboardButton("🔑 Cambiar SESSION_ID", callback_data="change_session")]
+        [InlineKeyboardButton("🔑 Cambiar SESSION_ID", callback_data="change_session")],
+        [InlineKeyboardButton("📧 Enviar Correo", callback_data="send_email")]
     ]
     return InlineKeyboardMarkup(botones)
 
@@ -139,19 +166,16 @@ async def change_session(client, callback_query):
     chat_id = callback_query.message.chat.id
     await callback_query.message.edit_text("🔐 Envíame el **nuevo SESSION_ID**.")
 
-    # Aquí esperamos que el usuario ingrese el nuevo SESSION_ID sin buscar ningún usuario
     @app.on_message(filters.text & filters.private)
     async def receive_new_session(client, message):
         if message.chat.id == chat_id:
-            # Verificamos que el texto ingresado no sea vacío
             new_session_id = message.text.strip()
-            if new_session_id:  # Aseguramos que no esté vacío
+            if new_session_id:
                 global SESSION_ID
                 SESSION_ID = new_session_id
                 os.environ["SESSION_ID"] = new_session_id  # Guardar en el entorno también
                 await message.reply_text(f"✅ Nuevo SESSION_ID guardado: `{SESSION_ID}`")
                 app.remove_handler(receive_new_session)
-                # Volver a mostrar el menú
                 await message.reply_text(
                     f"🌟 **SESSION_ID actual:** `{SESSION_ID}`\n\n"
                     "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
@@ -160,6 +184,41 @@ async def change_session(client, callback_query):
             else:
                 await message.reply_text("❌ El SESSION_ID no puede estar vacío. Por favor, ingresa uno válido.")
                 app.remove_handler(receive_new_session)
+
+# Callback para enviar correo
+@app.on_callback_query(filters.regex("send_email"))
+async def send_email_callback(client, callback_query):
+    chat_id = callback_query.message.chat.id
+    await callback_query.message.edit_text("📧 Envíame el **destinatario** del correo.")
+
+    @app.on_message(filters.text & filters.private)
+    async def receive_email_data(client, message):
+        if message.chat.id == chat_id:
+            email_to = message.text.strip()
+            await message.reply_text("📧 Envíame el **asunto** del correo.")
+
+            @app.on_message(filters.text & filters.private)
+            async def receive_subject(client, message):
+                if message.chat.id == chat_id:
+                    subject = message.text.strip()
+                    await message.reply_text("📧 Envíame el **mensaje** del correo.")
+
+                    @app.on_message(filters.text & filters.private)
+                    async def receive_message(client, message):
+                        if message.chat.id == chat_id:
+                            body = message.text.strip()
+                            await message.reply_text("📧 ¿Cuántos correos deseas enviar?")
+
+                            @app.on_message(filters.text & filters.private)
+                            async def receive_count(client, message):
+                                if message.chat.id == chat_id:
+                                    count = int(message.text.strip())
+                                    response = send_email(email_to, subject, body, "from-email@example.com", count)
+                                    await message.reply_text(response)
+                                    app.remove_handler(receive_count)
+                                    app.remove_handler(receive_message)
+                                    app.remove_handler(receive_subject)
+                                    app.remove_handler(receive_email_data)
 
 # Callback para volver al menú principal
 @app.on_callback_query(filters.regex("back_to_main"))
