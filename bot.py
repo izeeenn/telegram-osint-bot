@@ -80,77 +80,51 @@ async def start(client, message):
 
 @app.on_callback_query(filters.regex("search_user"))
 async def search_user(client, callback_query):
-    try:
-        if callback_query.message.text != "🔍 Envíame el **nombre de usuario** de Instagram.":
-            await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram.")
-    except Exception as e:
-        print(f"Error editando mensaje: {e}")
-    
-    @app.on_message(filters.text & filters.private)
-    async def receive_username(client, message):
-        username = message.text.strip()
-        await message.reply_text("🔍 Buscando información...")
-        data = get_instagram_info(username, SESSION_ID)
-        if "error" in data:
-            await message.reply_text(f"❌ Error: {data['error']}")
-        else:
-            info_msg = f"📌 **Usuario:** {data['username']}\n📛 **Nombre:** {data['full_name']}\n🆔 **ID:** {data['user_id']}\n👥 **Seguidores:** {data['followers']}\n🔒 **Privado:** {'Sí' if data['is_private'] else 'No'}\n📝 **Bio:** {data['bio']}"
-            await message.reply_photo(photo=data['profile_picture'], caption=info_msg)
-        app.remove_handler(receive_username)
+    await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram.")
+
+@app.on_message(filters.text & filters.private)
+async def receive_username(client, message):
+    username = message.text.strip()
+    await message.reply_text("🔍 Buscando información...")
+    data = get_instagram_info(username, SESSION_ID)
+    if "error" in data:
+        await message.reply_text(f"❌ Error: {data['error']}")
+    else:
+        info_msg = f"📌 **Usuario:** {data['username']}\n📛 **Nombre:** {data['full_name']}\n🆔 **ID:** {data['user_id']}\n👥 **Seguidores:** {data['followers']}\n🔒 **Privado:** {'Sí' if data['is_private'] else 'No'}\n📝 **Bio:** {data['bio']}"
+        await message.reply_photo(photo=data['profile_picture'], caption=info_msg)
 
 @app.on_callback_query(filters.regex("email_spoof"))
 async def email_spoof(client, callback_query):
-    try:
-        if callback_query.message.text != "📧 Envíame el correo del destinatario.":
-            await callback_query.message.edit_text("📧 Envíame el correo del destinatario.")
-    except Exception as e:
-        print(f"Error editando mensaje: {e}")
+    await callback_query.message.edit_text("📧 Envíame el correo del destinatario.")
+
+@app.on_message(filters.text & filters.private)
+async def receive_email(client, message):
+    to_email = message.text.strip()
+    await message.reply_text("📧 Ahora ingresa el correo del remitente falso.")
     
-    @app.on_message(filters.text & filters.private)
-    async def receive_email(client, message):
-        to_email = message.text.strip()
-        await message.reply_text("📧 Ahora ingresa el correo del remitente falso.")
-        
-        @app.on_message(filters.text & filters.private)
-        async def receive_from_email(client, message):
-            from_email = message.text.strip()
-            await message.reply_text("✉️ Escribe el asunto del correo.")
-            
-            @app.on_message(filters.text & filters.private)
-            async def receive_subject(client, message):
-                subject = message.text.strip()
-                await message.reply_text("📝 Escribe el mensaje del correo.")
-                
-                @app.on_message(filters.text & filters.private)
-                async def receive_message(client, message):
-                    message_text = message.text.strip()
-                    response = send_spoof_email(to_email, from_email, subject, message_text)
-                    await message.reply_text(f"✅ Respuesta: {response}")
-                    app.remove_handler(receive_message)
-                
-                app.add_handler(receive_message)
-            
-            app.add_handler(receive_subject)
-        
-        app.add_handler(receive_from_email)
+    from_email_msg = await app.listen(message.chat.id)
+    from_email = from_email_msg.text.strip()
+    await message.reply_text("✉️ Escribe el asunto del correo.")
     
-    app.add_handler(receive_email)
+    subject_msg = await app.listen(message.chat.id)
+    subject = subject_msg.text.strip()
+    await message.reply_text("📝 Escribe el mensaje del correo.")
+    
+    message_msg = await app.listen(message.chat.id)
+    message_text = message_msg.text.strip()
+    response = send_spoof_email(to_email, from_email, subject, message_text)
+    await message.reply_text(f"✅ Respuesta: {response}")
 
 @app.on_callback_query(filters.regex("change_session"))
 async def change_session(client, callback_query):
-    try:
-        if callback_query.message.text != "🔑 Envíame el nuevo SESSION_ID.":
-            await callback_query.message.edit_text("🔑 Envíame el nuevo SESSION_ID.")
-    except Exception as e:
-        print(f"Error editando mensaje: {e}")
-    
-    @app.on_message(filters.text & filters.private)
-    async def receive_new_session(client, message):
-        global SESSION_ID
-        SESSION_ID = message.text.strip()
-        os.environ["SESSION_ID"] = SESSION_ID
-        await message.reply_text(f"✅ Nuevo SESSION_ID guardado.")
-        app.remove_handler(receive_new_session)
+    await callback_query.message.edit_text("🔑 Envíame el nuevo SESSION_ID.")
+
+@app.on_message(filters.text & filters.private)
+async def receive_new_session(client, message):
+    global SESSION_ID
+    SESSION_ID = message.text.strip()
+    os.environ["SESSION_ID"] = SESSION_ID
+    await message.reply_text(f"✅ Nuevo SESSION_ID guardado.")
 
 # Ejecutar el bot
 if __name__ == "__main__":
