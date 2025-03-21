@@ -24,48 +24,59 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
-# ✅ Asegurar que cada comando tenga su propio manejador
-@app.on_message(filters.command("spoofemail") & filters.private)
-async def spoof_email(client, message):
-    args = message.text.split(" ", 4)  # Separa en máximo 5 partes
-    
-    if len(args) < 5:
-        await message.reply_text("❌ Uso incorrecto.\nFormato correcto:\n`/spoofemail remitente destinatario asunto mensaje`")
-        return
-    
-    from_email, to_email, subject, message_text = args[1], args[2], args[3], args[4]
+# ✅ Función para generar el menú principal
+def main_menu():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📷 Instagram OSINT", callback_data="menu_instagram")],
+        [InlineKeyboardButton("🛠️ Tools", callback_data="menu_tools")]
+    ])
 
-    response = send_spoofed_email(from_email, to_email, subject, message_text)
+# ✅ Función para mostrar el menú de Instagram
+def instagram_menu():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔍 Buscar usuario", callback_data="search_instagram")],
+        [InlineKeyboardButton("⬅️ Volver", callback_data="back_main")]
+    ])
 
-    if response.get("message") == "Queued. Thank you.":
-        await message.reply_text(f"✅ Correo enviado con éxito de `{from_email}` a `{to_email}`.")
-    else:
-        await message.reply_text(f"❌ Error al enviar el correo: {response}")
+# ✅ Función para mostrar el menú de herramientas
+def tools_menu():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📧 Email Spoofing", callback_data="email_spoofing")],
+        [InlineKeyboardButton("⬅️ Volver", callback_data="back_main")]
+    ])
 
-# ✅ Función para enviar correos falsificados con Mailgun
-def send_spoofed_email(from_email, to_email, subject, message):
-    url = f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages"
-    auth = ("api", MAILGUN_API_KEY)
-    data = {
-        "from": from_email,
-        "to": to_email,
-        "subject": subject,
-        "text": message
-    }
+# ✅ Comando /start con menú principal
+@app.on_message(filters.command("start") & filters.private)
+async def start(client, message):
+    await message.reply_text(
+        "👋 ¡Bienvenido!\nSelecciona una opción:",
+        reply_markup=main_menu()
+    )
 
-    response = requests.post(url, auth=auth, data=data)
-    return response.json()
+# ✅ Manejo de callbacks para el menú
+@app.on_callback_query()
+async def menu_navigation(client, callback_query):
+    data = callback_query.data
 
-# ✅ Comando para buscar usuario de Instagram
-@app.on_message(filters.command("insta") & filters.private)
-async def search_instagram(client, message):
-    args = message.text.split(" ", 1)
-    
-    if len(args) < 2:
-        await message.reply_text("❌ Uso incorrecto.\nFormato correcto:\n`/insta usuario`")
-        return
-    
-    username = args[1]
+    if data == "menu_instagram":
+        await callback_query.message.edit_text("📷 **Instagram OSINT**\nSelecciona una opción:", reply_markup=instagram_menu())
+
+    elif data == "menu_tools":
+        await callback_query.message.edit_text("🛠️ **Tools**\nSelecciona una herramienta:", reply_markup=tools_menu())
+
+    elif data == "back_main":
+        await callback_query.message.edit_text("👋 ¡Bienvenido!\nSelecciona una opción:", reply_markup=main_menu())
+
+    elif data == "search_instagram":
+        await callback_query.message.edit_text("🔎 Envíame el **nombre de usuario** de Instagram.")
+
+        @app.on_message(filters.text & filters.private)
+        async def receive_username(client, message):
+            username = message.text.strip()
+            await search_instagram(client, message, username)
+
+# ✅ Función para buscar usuarios en Instagram
+async def search_instagram(client, message, username):
     await message.reply_text("🔍 Buscando información, espera un momento...")
 
     data = get_instagram_info(username, SESSION_ID)
@@ -120,19 +131,36 @@ def get_instagram_info(username, session_id):
         "obfuscated_phone": obfuscated_info.get("obfuscated_phone", "No disponible"),
     }
 
-# ✅ Función para obtener datos de correo y teléfono ocultos
-def advanced_lookup(username, session_id):
-    data = "signed_body=SIGNATURE." + quote_plus(json.dumps({"q": username, "skip_recovery": "1"}))
-    headers = {
-        "User-Agent": "Instagram 101.0.0.15.120",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-    }
-    response = requests.post("https://i.instagram.com/api/v1/users/lookup/", headers=headers, data=data, cookies={"sessionid": session_id})
+# ✅ Email Spoofing con Mailgun
+@app.on_message(filters.command("spoofemail") & filters.private)
+async def spoof_email(client, message):
+    args = message.text.split(" ", 4)
     
-    try:
-        return response.json()
-    except json.JSONDecodeError:
-        return {"error": "Rate limit"}
+    if len(args) < 5:
+        await message.reply_text("❌ Uso incorrecto.\nFormato correcto:\n`/spoofemail remitente destinatario asunto mensaje`")
+        return
+    
+    from_email, to_email, subject, message_text = args[1], args[2], args[3], args[4]
+
+    response = send_spoofed_email(from_email, to_email, subject, message_text)
+
+    if response.get("message") == "Queued. Thank you.":
+        await message.reply_text(f"✅ Correo enviado con éxito de `{from_email}` a `{to_email}`.")
+    else:
+        await message.reply_text(f"❌ Error al enviar el correo: {response}")
+
+def send_spoofed_email(from_email, to_email, subject, message):
+    url = f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages"
+    auth = ("api", MAILGUN_API_KEY)
+    data = {
+        "from": from_email,
+        "to": to_email,
+        "subject": subject,
+        "text": message
+    }
+
+    response = requests.post(url, auth=auth, data=data)
+    return response.json()
 
 # ✅ Ejecutar el bot
 if __name__ == "__main__":
