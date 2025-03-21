@@ -1,7 +1,6 @@
 import os
 import requests
 import json
-from urllib.parse import quote_plus
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
@@ -35,6 +34,7 @@ def main_menu():
 def instagram_menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔍 Buscar usuario", callback_data="search_instagram")],
+        [InlineKeyboardButton("🔑 Cambiar SESSION_ID", callback_data="change_session")],
         [InlineKeyboardButton("⬅️ Volver", callback_data="back_main")]
     ])
 
@@ -66,16 +66,19 @@ async def menu_navigation(client, callback_query):
 
     elif data == "search_instagram":
         await callback_query.message.edit_text("🔎 Envíame el **nombre de usuario** de Instagram.")
-        await search_instagram(client, callback_query.message)
 
-# ✅ Función para buscar usuarios en Instagram
-async def search_instagram(client, message):
-    response = await client.listen(message.chat.id, filters=filters.text, timeout=60)
+    elif data == "change_session":
+        await callback_query.message.edit_text("🔐 Envíame el **nuevo SESSION_ID**.")
 
-    if response:
-        username = response.text.strip()
+# ✅ Buscar usuario de Instagram
+@app.on_message(filters.text & filters.private)
+async def process_text(client, message):
+    global SESSION_ID
+    text = message.text.strip()
+
+    if text.startswith("INSTAGRAM:"):
+        username = text.replace("INSTAGRAM:", "").strip()
         await message.reply_text("🔍 Buscando información, espera un momento...")
-
         data = get_instagram_info(username, SESSION_ID)
 
         if "error" in data:
@@ -90,11 +93,15 @@ async def search_instagram(client, message):
                 f"📝 **Bio:** {data['bio']}\n"
                 f"📧 **Email público:** {data['public_email']}\n"
                 f"📞 **Teléfono público:** {data['public_phone']}\n"
-                f"📧 **Correo oculto:** {data['obfuscated_email']}\n"
-                f"📞 **Teléfono oculto:** {data['obfuscated_phone']}\n"
             )
             
             await message.reply_text(info_msg)
+
+    elif text.startswith("SESSION:"):
+        new_session_id = text.replace("SESSION:", "").strip()
+        SESSION_ID = new_session_id
+        os.environ["SESSION_ID"] = new_session_id
+        await message.reply_text(f"✅ Nuevo SESSION_ID guardado: `{SESSION_ID}`")
 
 # ✅ Función para obtener datos de Instagram
 def get_instagram_info(username, session_id):
@@ -121,8 +128,6 @@ def get_instagram_info(username, session_id):
         "profile_picture": user_data.get("profile_pic_url_hd", "No disponible"),
         "public_email": user_data.get("public_email", "No disponible"),
         "public_phone": user_data.get("public_phone_number", "No disponible"),
-        "obfuscated_email": "No disponible",
-        "obfuscated_phone": "No disponible",
     }
 
 # ✅ Email Spoofing con Mailgun
