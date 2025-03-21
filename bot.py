@@ -1,166 +1,123 @@
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import os
 import requests
-import json
-from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from dotenv import load_dotenv
 
-# Cargar variables de entorno
-load_dotenv()
-
-API_ID = int(os.getenv("API_ID"))
-API_HASH = os.getenv("API_HASH")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-SESSION_ID = os.getenv("SESSION_ID")
+# Configuración de Mailgun
 MAILGUN_API_KEY = os.getenv("MAILGUN_API_KEY")
 MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN")
 
-# Configuración del bot
-app = Client(
-    "osint_bot",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    bot_token=BOT_TOKEN
-)
-
-# ✅ Función para generar el menú principal
+# Función para construir el nuevo menú principal
 def main_menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📷 Instagram OSINT", callback_data="menu_instagram")],
-        [InlineKeyboardButton("🛠️ Tools", callback_data="menu_tools")]
-    ])
+    botones = [
+        [InlineKeyboardButton("📌 Instagram", callback_data="menu_instagram")],
+        [InlineKeyboardButton("📌 Tools", callback_data="menu_tools")]
+    ]
+    return InlineKeyboardMarkup(botones)
 
-# ✅ Menú de Instagram
+# Submenú de Instagram
 def instagram_menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔍 Buscar usuario", callback_data="search_instagram")],
+    botones = [
+        [InlineKeyboardButton("🔎 Buscar usuario", callback_data="search_user")],
         [InlineKeyboardButton("🔑 Cambiar SESSION_ID", callback_data="change_session")],
-        [InlineKeyboardButton("⬅️ Volver", callback_data="back_main")]
-    ])
+        [InlineKeyboardButton("🔙 Volver", callback_data="back_to_main")]
+    ]
+    return InlineKeyboardMarkup(botones)
 
-# ✅ Menú de herramientas
+# Submenú de Tools
 def tools_menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📧 Email Spoofing", callback_data="email_spoofing")],
-        [InlineKeyboardButton("⬅️ Volver", callback_data="back_main")]
-    ])
+    botones = [
+        [InlineKeyboardButton("✉️ Email Spoofing", callback_data="email_spoofing")],
+        [InlineKeyboardButton("🔙 Volver", callback_data="back_to_main")]
+    ]
+    return InlineKeyboardMarkup(botones)
 
-# ✅ Comando /start con menú principal
-@app.on_message(filters.command("start") & filters.private)
-async def start(client, message):
-    await message.reply_text("👋 ¡Bienvenido!\nSelecciona una opción:", reply_markup=main_menu())
+# Callback para mostrar el menú de Instagram
+@app.on_callback_query(filters.regex("menu_instagram"))
+async def show_instagram_menu(client, callback_query):
+    await callback_query.message.edit_text(
+        "📌 **Menú de Instagram**\nSelecciona una opción:",
+        reply_markup=instagram_menu()
+    )
 
-# ✅ Manejo de callbacks para el menú
-@app.on_callback_query()
-async def menu_navigation(client, callback_query):
-    data = callback_query.data
+# Callback para mostrar el menú de Tools
+@app.on_callback_query(filters.regex("menu_tools"))
+async def show_tools_menu(client, callback_query):
+    await callback_query.message.edit_text(
+        "📌 **Menú de Tools**\nSelecciona una opción:",
+        reply_markup=tools_menu()
+    )
 
-    if data == "menu_instagram":
-        await callback_query.message.edit_text("📷 **Instagram OSINT**\nSelecciona una opción:", reply_markup=instagram_menu())
-
-    elif data == "menu_tools":
-        await callback_query.message.edit_text("🛠️ **Tools**\nSelecciona una herramienta:", reply_markup=tools_menu())
-
-    elif data == "back_main":
-        await callback_query.message.edit_text("👋 ¡Bienvenido!\nSelecciona una opción:", reply_markup=main_menu())
-
-    elif data == "search_instagram":
-        await callback_query.message.edit_text("🔎 Envíame el **nombre de usuario** de Instagram.")
-
-    elif data == "change_session":
-        await callback_query.message.edit_text("🔐 Envíame el **nuevo SESSION_ID**.")
-
-# ✅ Buscar usuario de Instagram
-@app.on_message(filters.text & filters.private)
-async def process_text(client, message):
-    global SESSION_ID
-    text = message.text.strip()
-
-    if text.startswith("INSTAGRAM:"):
-        username = text.replace("INSTAGRAM:", "").strip()
-        await message.reply_text("🔍 Buscando información, espera un momento...")
-        data = get_instagram_info(username, SESSION_ID)
-
-        if "error" in data:
-            await message.reply_text(f"❌ Error: {data['error']}")
-        else:
-            info_msg = (
-                f"📌 **Usuario:** {data['username']}\n"
-                f"📛 **Nombre:** {data['full_name']}\n"
-                f"🆔 **ID:** {data['user_id']}\n"
-                f"👥 **Seguidores:** {data['followers']}\n"
-                f"🔒 **Cuenta privada:** {'Sí' if data['is_private'] else 'No'}\n"
-                f"📝 **Bio:** {data['bio']}\n"
-                f"📧 **Email público:** {data['public_email']}\n"
-                f"📞 **Teléfono público:** {data['public_phone']}\n"
-            )
+# Callback para iniciar Email Spoofing
+@app.on_callback_query(filters.regex("email_spoofing"))
+async def email_spoofing_start(client, callback_query):
+    chat_id = callback_query.message.chat.id
+    await callback_query.message.edit_text("✉️ **Email Spoofing**\nEnvíame el **correo del remitente falso**.")
+    
+    @app.on_message(filters.text & filters.private)
+    async def get_fake_sender(client, message):
+        if message.chat.id == chat_id:
+            fake_sender = message.text.strip()
+            await message.reply_text("📩 Ahora, ingresa el **correo del destinatario**.")
             
-            await message.reply_text(info_msg)
+            @app.on_message(filters.text & filters.private)
+            async def get_recipient(client, message):
+                if message.chat.id == chat_id:
+                    recipient = message.text.strip()
+                    await message.reply_text("✏️ Ahora, ingresa el **asunto del correo**.")
+                    
+                    @app.on_message(filters.text & filters.private)
+                    async def get_subject(client, message):
+                        if message.chat.id == chat_id:
+                            subject = message.text.strip()
+                            await message.reply_text("📝 Finalmente, ingresa el **mensaje del correo**.")
+                            
+                            @app.on_message(filters.text & filters.private)
+                            async def get_message(client, message):
+                                if message.chat.id == chat_id:
+                                    email_message = message.text.strip()
+                                    
+                                    # Enviar email con Mailgun
+                                    response = send_email(fake_sender, recipient, subject, email_message)
+                                    
+                                    if response:
+                                        await message.reply_text("✅ **Correo enviado con éxito.**")
+                                    else:
+                                        await message.reply_text("❌ **Error al enviar el correo.**")
+                                    
+                                    # Remover handlers para evitar interferencias
+                                    app.remove_handler(get_fake_sender)
+                                    app.remove_handler(get_recipient)
+                                    app.remove_handler(get_subject)
+                                    app.remove_handler(get_message)
+                                    
+                                    # Volver al menú principal
+                                    await message.reply_text(
+                                        "🌟 **Menú Principal**\nSelecciona una categoría:",
+                                        reply_markup=main_menu()
+                                    )
 
-    elif text.startswith("SESSION:"):
-        new_session_id = text.replace("SESSION:", "").strip()
-        SESSION_ID = new_session_id
-        os.environ["SESSION_ID"] = new_session_id
-        await message.reply_text(f"✅ Nuevo SESSION_ID guardado: `{SESSION_ID}`")
+# Función para enviar email con Mailgun
+def send_email(fake_sender, recipient, subject, email_message):
+    try:
+        response = requests.post(
+            f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages",
+            auth=("api", MAILGUN_API_KEY),
+            data={
+                "from": fake_sender,
+                "to": recipient,
+                "subject": subject,
+                "text": email_message
+            }
+        )
+        return response.status_code == 200
+    except Exception as e:
+        print("Error al enviar correo:", e)
+        return False
 
-# ✅ Función para obtener datos de Instagram
-def get_instagram_info(username, session_id):
-    headers = {"User-Agent": "Instagram 101.0.0.15.120", "x-ig-app-id": "936619743392459"}
-    cookies = {"sessionid": session_id}
-    
-    profile_url = f'https://i.instagram.com/api/v1/users/web_profile_info/?username={username}'
-    response = requests.get(profile_url, headers=headers, cookies=cookies)
-    
-    if response.status_code == 404:
-        return {"error": "Usuario no encontrado"}
-    
-    user_data = response.json().get("data", {}).get("user", {})
-    if not user_data:
-        return {"error": "No se pudo obtener información del usuario"}
-    
-    return {
-        "username": user_data.get("username", "No disponible"),
-        "full_name": user_data.get("full_name", "No disponible"),
-        "user_id": user_data.get("id", "Desconocido"),
-        "followers": user_data.get("edge_followed_by", {}).get("count", "No disponible"),
-        "is_private": user_data.get("is_private", False),
-        "bio": user_data.get("biography", "No disponible"),
-        "profile_picture": user_data.get("profile_pic_url_hd", "No disponible"),
-        "public_email": user_data.get("public_email", "No disponible"),
-        "public_phone": user_data.get("public_phone_number", "No disponible"),
-    }
-
-# ✅ Email Spoofing con Mailgun
-@app.on_message(filters.command("spoofemail") & filters.private)
-async def spoof_email(client, message):
-    args = message.text.split(" ", 4)
-    
-    if len(args) < 5:
-        await message.reply_text("❌ Uso incorrecto.\nFormato correcto:\n`/spoofemail remitente destinatario asunto mensaje`")
-        return
-    
-    from_email, to_email, subject, message_text = args[1], args[2], args[3], args[4]
-
-    response = send_spoofed_email(from_email, to_email, subject, message_text)
-
-    if response.get("message") == "Queued. Thank you.":
-        await message.reply_text(f"✅ Correo enviado con éxito de `{from_email}` a `{to_email}`.")
-    else:
-        await message.reply_text(f"❌ Error al enviar el correo: {response}")
-
-def send_spoofed_email(from_email, to_email, subject, message):
-    url = f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages"
-    auth = ("api", MAILGUN_API_KEY)
-    data = {
-        "from": from_email,
-        "to": to_email,
-        "subject": subject,
-        "text": message
-    }
-
-    response = requests.post(url, auth=auth, data=data)
-    return response.json()
-
-# ✅ Ejecutar el bot
-if __name__ == "__main__":
-    app.run()
+# Callback para volver al menú principal
+@app.on_callback_query(filters.regex("back_to_main"))
+async def back_to_main(client, callback_query):
+    await callback_query.message.edit_text(
+        "🌟 **Menú Principal**\nSelecciona una categoría:",
+        reply_markup=main_menu()
+    )
