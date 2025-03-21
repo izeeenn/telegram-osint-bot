@@ -1,6 +1,8 @@
 pyrogram
 requests
+tgcrypto
 python-dotenv
 phonenumbers
 pycountry
 beautifulsoup4
+tgcrypto
