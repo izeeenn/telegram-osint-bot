@@ -15,14 +15,16 @@ MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN", "")
 API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+SESSION_ID = os.getenv("SESSION_ID")
 
 # Depuración: Imprimir valores cargados
 print("API_ID:", API_ID)
 print("API_HASH:", API_HASH)
 print("BOT_TOKEN:", BOT_TOKEN)
+print("SESSION_ID:", SESSION_ID)
 
-if not API_ID or not API_HASH or not BOT_TOKEN:
-    raise ValueError("Error: Faltan credenciales en las variables de entorno.")
+if not API_ID or not API_HASH or not BOT_TOKEN or not SESSION_ID:
+    raise ValueError("Error: Faltan credenciales en las variables de entorno. Verifica tu archivo .env")
 
 API_ID = int(API_ID)  # Convertir API_ID a entero
 
@@ -66,18 +68,18 @@ async def show_tools_menu(client, callback_query):
     await callback_query.message.edit_text("📌 **Menú de Tools**\nSelecciona una opción:", reply_markup=tools_menu())
 
 # Email Spoofing
-email_data_store = {}
+draft_emails = {}
 
 @app.on_callback_query(filters.regex("email_spoofing"))
 async def email_spoofing_start(client, callback_query):
     chat_id = callback_query.message.chat.id
-    email_data_store[chat_id] = {}
-    await callback_query.message.edit_text("✉️ **Email Spoofing**\nEnvíame el **nombre del remitente falso**.")
+    draft_emails[chat_id] = {}
+    await callback_query.message.edit_text("✉️ **Email Spoofing**\nIngresa el **nombre del remitente falso**:")
 
 @app.on_message(filters.text & filters.private)
 async def email_spoofing_flow(client, message):
     chat_id = message.chat.id
-    step = len(email_data_store.get(chat_id, {}))
+    step = len(draft_emails.get(chat_id, {}))
     
     steps = ["fake_name", "fake_sender", "recipient", "subject", "email_message"]
     prompts = [
@@ -88,11 +90,11 @@ async def email_spoofing_flow(client, message):
     ]
     
     if step < len(steps):
-        email_data_store[chat_id][steps[step]] = message.text.strip()
+        draft_emails[chat_id][steps[step]] = message.text.strip()
         if step < len(prompts):
             await message.reply_text(prompts[step])
     else:
-        email_data = email_data_store.get(chat_id, {})
+        email_data = draft_emails.get(chat_id, {})
         await message.reply_text(
             f"🧐 **Vista previa:**\n\n"
             f"📨 De: {email_data['fake_name']} <{email_data['fake_sender']}>\n"
@@ -109,7 +111,7 @@ async def email_spoofing_flow(client, message):
 @app.on_callback_query(filters.regex("confirm_send_email"))
 async def confirm_send_email(client, callback_query):
     chat_id = callback_query.message.chat.id
-    email_data = email_data_store.get(chat_id, {})
+    email_data = draft_emails.get(chat_id, {})
     
     response = send_email(
         email_data.get("fake_name"),
