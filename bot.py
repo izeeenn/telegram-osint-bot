@@ -1,144 +1,108 @@
 import os
 import smtplib
-from pyrogram import Client, filters
-from pyrogram.types import Message, CallbackQuery
-from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from phonenumbers import parse, is_valid_number
+from email.mime.multipart import MIMEMultipart
+from pyrogram import Client, filters
+from pyrogram.errors import FloodWait
 import requests
-import json
-import pycountry
-import random
-import string
+from pyrogram.types import CallbackQuery
+from dotenv import load_dotenv
+import phonenumbers
 
-# Configuración del bot
+# Cargar variables de entorno desde .env
+load_dotenv()
+
 API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-SESSION_ID = os.getenv("SESSION_ID")
-SMTP_USER = os.getenv("SMTP_USER")
-SMTP_PASS = os.getenv("SMTP_PASS")
+MAILGUN_API_KEY = os.getenv("MAILGUN_API_KEY")
+MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN")
 
+# Iniciar el bot con Pyrogram
 app = Client("my_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-@app.on_message(filters.command("start"))
-async def start(client, message: Message):
-    await message.reply("¡Hola! Soy tu bot de OSINT. ¿En qué puedo ayudarte hoy?", reply_markup=main_menu())
+# Función de búsqueda de usuarios en Instagram
+def search_instagram_user(username):
+    # Lógica de búsqueda para obtener información de Instagram (puedes agregar más lógica aquí)
+    response = requests.get(f'https://www.instagram.com/{username}/')
+    if response.status_code == 200:
+        return f"Información del perfil de Instagram para @{username}: {response.url}"
+    else:
+        return "No se pudo encontrar el perfil de Instagram."
 
-@app.on_callback_query(filters.regex("search_user"))
-async def search_user(client, callback_query: CallbackQuery):
-    await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram que quieres buscar.")
-    
-    @app.on_message(filters.text & filters.private)
-    async def handle_instagram_username(client, message: Message):
-        if message.chat.id == callback_query.message.chat.id:
-            username = message.text.strip()
-            # Aquí iría la lógica para buscar el usuario en Instagram
-            await message.reply(f"Buscando el usuario de Instagram: {username}")
-            app.remove_handler(handle_instagram_username)  # Eliminar el manejador una vez procesada la solicitud
-
-@app.on_callback_query(filters.regex("change_session"))
-async def change_session(client, callback_query: CallbackQuery):
-    await callback_query.message.edit_text("🔐 Envíame el **nuevo SESSION_ID**.")
-    
-    @app.on_message(filters.text & filters.private)
-    async def receive_new_session(client, message: Message):
-        if message.chat.id == callback_query.message.chat.id:
-            new_session_id = message.text.strip()
-            if new_session_id:
-                global SESSION_ID
-                SESSION_ID = new_session_id
-                os.environ["SESSION_ID"] = new_session_id  # Guardar en el entorno también
-                await message.reply_text(f"✅ Nuevo SESSION_ID guardado: `{SESSION_ID}`")
-                app.remove_handler(receive_new_session)
-                await message.reply_text("¡SESSION_ID actualizado! ¿Qué más puedo hacer por ti?", reply_markup=main_menu())
-            else:
-                await message.reply_text("❌ El SESSION_ID no puede estar vacío. Por favor, ingresa uno válido.")
-                app.remove_handler(receive_new_session)
-
-@app.on_callback_query(filters.regex("check_plate"))
-async def check_plate(client, callback_query: CallbackQuery):
-    await callback_query.message.edit_text("🔍 Envíame la **matrícula** del coche que quieres consultar.")
-    
-    @app.on_message(filters.text & filters.private)
-    async def handle_plate(client, message: Message):
-        if message.chat.id == callback_query.message.chat.id:
-            plate = message.text.strip()
-            # Aquí iría la lógica para consultar la matrícula
-            await message.reply(f"Consultando la matrícula: {plate}")
-            app.remove_handler(handle_plate)
-
-@app.on_callback_query(filters.regex("validate_phone"))
-async def validate_phone(client, callback_query: CallbackQuery):
-    await callback_query.message.edit_text("📱 Envíame el **número de teléfono** que quieres validar.")
-    
-    @app.on_message(filters.text & filters.private)
-    async def handle_phone(client, message: Message):
-        if message.chat.id == callback_query.message.chat.id:
-            phone = message.text.strip()
-            try:
-                parsed_phone = parse(phone, None)
-                if is_valid_number(parsed_phone):
-                    await message.reply(f"✅ El número de teléfono **{phone}** es válido.")
-                else:
-                    await message.reply(f"❌ El número de teléfono **{phone}** no es válido.")
-            except Exception as e:
-                await message.reply(f"❌ Error al validar el número: {str(e)}")
-            app.remove_handler(handle_phone)
-
-@app.on_callback_query(filters.regex("get_country_info"))
-async def get_country_info(client, callback_query: CallbackQuery):
-    await callback_query.message.edit_text("🌍 Envíame el **nombre del país** del que quieres obtener información.")
-    
-    @app.on_message(filters.text & filters.private)
-    async def handle_country(client, message: Message):
-        if message.chat.id == callback_query.message.chat.id:
-            country_name = message.text.strip()
-            country = pycountry.countries.get(name=country_name)
-            if country:
-                await message.reply(f"🌍 Información del país: {country.name}\nCódigo de país: {country.alpha_2}")
-            else:
-                await message.reply(f"❌ No se encontró información para el país: {country_name}")
-            app.remove_handler(handle_country)
-
-# Función para enviar correo (spoofing)
-def send_email(mail_to, subject, message, mail_from, count):
-    smtp_server = "smtp.gmail.com"
-    smtp_port = 587
-
+# Función para el spoofing de correos electrónicos
+def send_spoofed_email(to_email, subject, body, from_email, smtp_server="smtp.mailgun.org"):
     msg = MIMEMultipart()
-    msg['From'] = mail_from
-    msg['To'] = mail_to
+    msg['From'] = from_email
+    msg['To'] = to_email
     msg['Subject'] = subject
-    msg.attach(MIMEText(message, 'plain'))
+    msg.attach(MIMEText(body, 'plain'))
 
     try:
-        with smtplib.SMTP(smtp_server, smtp_port) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASS)
-            for _ in range(count):
-                server.sendmail(mail_from, mail_to, msg.as_string())
-            return "Correo enviado correctamente"
+        server = smtplib.SMTP(smtp_server, 587)
+        server.starttls()
+        server.login(f"postmaster@{MAILGUN_DOMAIN}", MAILGUN_API_KEY)
+        server.sendmail(from_email, to_email, msg.as_string())
+        server.close()
+        return "Correo enviado correctamente."
     except Exception as e:
-        return f"Error al enviar correo: {str(e)}"
+        return f"Error al enviar el correo: {str(e)}"
 
-# Función para generar contraseñas aleatorias
-def generate_random_password(length=12):
-    characters = string.ascii_letters + string.digits + string.punctuation
-    password = ''.join(random.choice(characters) for i in range(length))
-    return password
+# Función de validación de teléfono
+def validate_phone_number(phone_number):
+    try:
+        parsed_number = phonenumbers.parse(phone_number, "ES")
+        if phonenumbers.is_valid_number(parsed_number):
+            return "El número es válido."
+        else:
+            return "El número no es válido."
+    except phonenumbers.phonenumberutil.NumberParseException:
+        return "Error al analizar el número."
 
-# Menú principal
-def main_menu():
-    return {
-        "keyboard": [
-            [{"text": "Buscar usuario de Instagram", "callback_data": "search_user"}],
-            [{"text": "Cambiar SESSION_ID", "callback_data": "change_session"}],
-            [{"text": "Consultar matrícula", "callback_data": "check_plate"}],
-            [{"text": "Validar teléfono", "callback_data": "validate_phone"}],
-            [{"text": "Obtener información de país", "callback_data": "get_country_info"}]
-        ],
-        "resize_keyboard": True
-    }
+# Función para cambiar la sesión de Telegram
+async def change_session(callback_query: CallbackQuery):
+    await callback_query.message.edit_text("🔐 Envíame el **nuevo SESSION_ID**.")
+    # Lógica para cambiar el session_id según el comando que recibe el usuario
 
+# Función para iniciar la búsqueda de un usuario
+async def search_user(client, message):
+    await message.reply("🔍 Envíame el **nombre de usuario** de Instagram que quieres buscar.")
+
+# Manejadores de comandos
+@app.on_message(filters.command("start"))
+async def start(client, message):
+    await message.reply("¡Hola! Soy tu bot. Usa /search para buscar un usuario en Instagram o /change para cambiar tu sesión.")
+
+@app.on_message(filters.command("search"))
+async def search(client, message):
+    await search_user(client, message)
+
+@app.on_message(filters.command("change"))
+async def change(client, message):
+    await message.reply("🔐 Envíame el **nuevo SESSION_ID** para cambiar la sesión.")
+
+@app.on_message(filters.command("email"))
+async def spoof_email(client, message):
+    # Pide al usuario que ingrese el correo de destino
+    await message.reply("Por favor, proporciona el correo electrónico de destino.")
+    # Lógica para enviar un correo spoofed
+    to_email = "destinatario@example.com"
+    subject = "Asunto del correo"
+    body = "Este es el cuerpo del correo."
+    from_email = "remitente@tudominio.com"
+    result = send_spoofed_email(to_email, subject, body, from_email)
+    await message.reply(result)
+
+@app.on_message(filters.command("phone"))
+async def validate_phone(client, message):
+    phone_number = message.text.split(' ', 1)[-1]  # El número de teléfono está después del comando
+    result = validate_phone_number(phone_number)
+    await message.reply(result)
+
+# Configuración de la gestión de sesiones y otras configuraciones del bot
+@app.on_callback_query(filters.regex("session"))
+async def session_callback(client, callback_query):
+    await change_session(callback_query)
+
+# Arrancar el bot
 app.run()
