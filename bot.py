@@ -8,11 +8,11 @@ from dotenv import load_dotenv
 # Cargar variables de entorno desde .env
 load_dotenv()
 
-# Configuración de SMTP2GO
-SMTP_SERVER = "mail.smtp2go.com"
-SMTP_PORT = 2525  # También puedes usar 587 o 465
+# Configuración de SMTP local
+SMTP_SERVER = os.getenv("SMTP_SERVER", "localhost")
+SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 SMTP_USER = os.getenv("SMTP_USER", "")
-SMTP_PASS = os.getenv("SMTP_PASS", "")
+SMTP_PASS = os.getenv("SMTP_PASSWORD", "")
 
 # Verificación de credenciales
 API_ID = os.getenv("API_ID")
@@ -28,17 +28,19 @@ API_ID = int(API_ID)  # Convertir API_ID a entero
 # Inicialización del bot
 app = Client("my_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
+draft_emails = {}
+
 def main_menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📌 Instagram", callback_data="menu_instagram")],
-        [InlineKeyboardButton("🛠 Tools", callback_data="menu_tools")],
-        [InlineKeyboardButton("ℹ️ Acerca del Bot", callback_data="about_bot")]
+    return InlineKeyboardMarkup([ 
+        [InlineKeyboardButton("📌 Instagram", callback_data="menu_instagram")], 
+        [InlineKeyboardButton("🛠 Tools", callback_data="menu_tools")], 
+        [InlineKeyboardButton("ℹ️ Acerca del Bot", callback_data="about_bot")] 
     ])
 
 def tools_menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✉️ Email Spoofing", callback_data="email_spoofing")],
-        [InlineKeyboardButton("🔙 Volver", callback_data="back_to_main")]
+    return InlineKeyboardMarkup([ 
+        [InlineKeyboardButton("✉️ Email Spoofing", callback_data="email_spoofing")], 
+        [InlineKeyboardButton("🔙 Volver", callback_data="back_to_main")] 
     ])
 
 @app.on_callback_query(filters.regex("email_spoofing"))
@@ -59,6 +61,9 @@ async def email_spoofing_flow(client, message):
         "📝 Finalmente, ingresa el **mensaje del correo** (puede ser en HTML)."
     ]
     
+    if chat_id not in draft_emails:
+        draft_emails[chat_id] = {}
+
     if step < len(steps):
         draft_emails[chat_id][steps[step]] = message.text.strip()
         if step < len(prompts):
@@ -72,9 +77,9 @@ async def email_spoofing_flow(client, message):
             f"📌 Asunto: {email_data['subject']}\n\n"
             f"💬 Mensaje:\n{email_data['email_message']}\n\n"
             f"¿Quieres enviarlo?",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("✅ Enviar", callback_data="confirm_send_email")],
-                [InlineKeyboardButton("❌ Cancelar", callback_data="back_to_main")]
+            reply_markup=InlineKeyboardMarkup([ 
+                [InlineKeyboardButton("✅ Enviar", callback_data="confirm_send_email")], 
+                [InlineKeyboardButton("❌ Cancelar", callback_data="back_to_main")] 
             ])
         )
 
@@ -108,7 +113,7 @@ def send_email(sender, recipient, subject, message):
             server.sendmail(sender, recipient, msg.as_string())
         return True
     except Exception as e:
-        print("Error al enviar correo:", e)
+        print(f"Error al enviar correo: {e}")
         return False
 
 @app.on_callback_query(filters.regex("back_to_main"))
