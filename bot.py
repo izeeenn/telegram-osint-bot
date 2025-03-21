@@ -8,9 +8,6 @@ from dotenv import load_dotenv
 import phonenumbers
 from phonenumbers.phonenumberutil import region_code_for_country_code
 import pycountry
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 # Cargar variables de entorno
 load_dotenv()
@@ -27,12 +24,6 @@ app = Client(
     api_hash=API_HASH,
     bot_token=BOT_TOKEN
 )
-
-# SMTP Configuration
-SMTP_HOST = os.getenv("SMTP_HOST")
-SMTP_PORT = int(os.getenv("SMTP_PORT"))
-SMTP_USER = os.getenv("SMTP_USER")
-SMTP_PASS = os.getenv("SMTP_PASS")
 
 # Función para obtener datos de Instagram
 def get_instagram_info(username, session_id):
@@ -81,36 +72,10 @@ def advanced_lookup(username, session_id):
     except json.JSONDecodeError:
         return {"error": "Rate limit"}
 
-# Función para enviar correo con un remitente personalizado (spoofing)
-def send_spoofed_email(from_email, to_email, subject, body):
-    try:
-        # Establecer conexión con el servidor SMTP
-        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
-        server.starttls()
-        server.login(SMTP_USER, SMTP_PASS)
-
-        # Crear el mensaje
-        msg = MIMEMultipart()
-        msg['From'] = from_email  # Remitente personalizado
-        msg['To'] = to_email
-        msg['Subject'] = subject
-
-        # Agregar el cuerpo del mensaje
-        msg.attach(MIMEText(body, 'plain'))
-
-        # Enviar el correo
-        server.sendmail(from_email, to_email, msg.as_string())
-        server.quit()
-
-        print(f"Correo enviado de {from_email} a {to_email}")
-    except Exception as e:
-        print(f"Error al enviar el correo: {e}")
-
 # Función para construir el menú dinámico
 def main_menu():
     botones = [
         [InlineKeyboardButton("🔎 Buscar usuario de Instagram", callback_data="search_user")],
-        [InlineKeyboardButton("📧 Enviar email spoofeado", callback_data="send_spoof_email")],
         [InlineKeyboardButton("🔑 Cambiar SESSION_ID", callback_data="change_session")]
     ]
     return InlineKeyboardMarkup(botones)
@@ -168,58 +133,25 @@ async def search_user(client, callback_query):
 
                 app.remove_handler(receive_username)
 
-# Callback para enviar email spoofeado
-@app.on_callback_query(filters.regex("send_spoof_email"))
-async def send_spoof_email(client, callback_query):
-    chat_id = callback_query.message.chat.id
-    await callback_query.message.edit_text("Envíame el **correo de destino** (a quién enviar el correo).")
-
-    @app.on_message(filters.text & filters.private)
-    async def receive_to_email(client, message):
-        if message.chat.id == chat_id:
-            to_email = message.text.strip()
-            await message.reply_text("Perfecto, ahora envíame el **asunto** del correo.")
-
-            @app.on_message(filters.text & filters.private)
-            async def receive_subject(client, message):
-                if message.chat.id == chat_id:
-                    subject = message.text.strip()
-                    await message.reply_text("Ahora, envíame el **cuerpo** del correo.")
-
-                    @app.on_message(filters.text & filters.private)
-                    async def receive_body(client, message):
-                        if message.chat.id == chat_id:
-                            body = message.text.strip()
-                            await message.reply_text("¡Perfecto! Ahora, envíame el **remitente** del correo (ejemplo: policia@policia.com).")
-
-                            @app.on_message(filters.text & filters.private)
-                            async def receive_from_email(client, message):
-                                if message.chat.id == chat_id:
-                                    from_email = message.text.strip()
-                                    await message.reply_text(f"Enviando correo desde `{from_email}` a `{to_email}`...")
-                                    send_spoofed_email(from_email, to_email, subject, body)
-                                    await message.reply_text("Correo enviado exitosamente.")
-                                    app.remove_handler(receive_from_email)
-                                    app.remove_handler(receive_body)
-                                    app.remove_handler(receive_subject)
-                                    app.remove_handler(receive_to_email)
-
 # Callback para cambiar SESSION_ID
 @app.on_callback_query(filters.regex("change_session"))
 async def change_session(client, callback_query):
     chat_id = callback_query.message.chat.id
     await callback_query.message.edit_text("🔐 Envíame el **nuevo SESSION_ID**.")
 
+    # Aquí esperamos que el usuario ingrese el nuevo SESSION_ID sin buscar ningún usuario
     @app.on_message(filters.text & filters.private)
     async def receive_new_session(client, message):
         if message.chat.id == chat_id:
+            # Verificamos que el texto ingresado no sea vacío
             new_session_id = message.text.strip()
-            if new_session_id:
+            if new_session_id:  # Aseguramos que no esté vacío
                 global SESSION_ID
                 SESSION_ID = new_session_id
-                os.environ["SESSION_ID"] = new_session_id
+                os.environ["SESSION_ID"] = new_session_id  # Guardar en el entorno también
                 await message.reply_text(f"✅ Nuevo SESSION_ID guardado: `{SESSION_ID}`")
                 app.remove_handler(receive_new_session)
+                # Volver a mostrar el menú
                 await message.reply_text(
                     f"🌟 **SESSION_ID actual:** `{SESSION_ID}`\n\n"
                     "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
