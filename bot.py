@@ -1,8 +1,10 @@
 import os
 import requests
 import json
+import asyncio
 from urllib.parse import quote_plus
 from pyrogram import Client, filters
+from pyrogram.errors import FloodWait
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
 
@@ -101,45 +103,31 @@ async def handle_user_input(client, message):
     user_id = message.chat.id
     state = user_states.get(user_id)
     
-    if state == "search_user":
-        username = message.text.strip()
-        await message.reply_text("🔍 Buscando información...")
-        data = get_instagram_info(username, SESSION_ID)
-        if "error" in data:
-            await message.reply_text(f"❌ Error: {data['error']}")
+    try:
+        if state == "search_user":
+            username = message.text.strip()
+            await message.reply_text("🔍 Buscando información...")
+            data = get_instagram_info(username, SESSION_ID)
+            if "error" in data:
+                await message.reply_text(f"❌ Error: {data['error']}")
+            else:
+                info_msg = f"📌 **Usuario:** {data['username']}\n📛 **Nombre:** {data['full_name']}\n🆔 **ID:** {data['user_id']}\n👥 **Seguidores:** {data['followers']}\n🔒 **Privado:** {'Sí' if data['is_private'] else 'No'}\n📝 **Bio:** {data['bio']}"
+                await message.reply_photo(photo=data['profile_picture'], caption=info_msg)
+            user_states[user_id] = None
+        
+        elif state == "change_session":
+            global SESSION_ID
+            SESSION_ID = message.text.strip()
+            os.environ["SESSION_ID"] = SESSION_ID
+            await message.reply_text(f"✅ Nuevo SESSION_ID guardado.")
+            user_states[user_id] = None
+        
         else:
-            info_msg = f"📌 **Usuario:** {data['username']}\n📛 **Nombre:** {data['full_name']}\n🆔 **ID:** {data['user_id']}\n👥 **Seguidores:** {data['followers']}\n🔒 **Privado:** {'Sí' if data['is_private'] else 'No'}\n📝 **Bio:** {data['bio']}"
-            await message.reply_photo(photo=data['profile_picture'], caption=info_msg)
-        user_states[user_id] = None
+            await message.reply_text("⚠️ Opción no válida. Usa /start para volver al menú.")
     
-    elif state == "email_spoof":
-        user_states[user_id] = {"step": "from_email", "to_email": message.text.strip()}
-        await message.reply_text("📧 Ahora ingresa el correo del remitente falso.")
-    
-    elif isinstance(state, dict) and state.get("step") == "from_email":
-        state["from_email"] = message.text.strip()
-        state["step"] = "subject"
-        await message.reply_text("✉️ Escribe el asunto del correo.")
-    
-    elif isinstance(state, dict) and state.get("step") == "subject":
-        state["subject"] = message.text.strip()
-        state["step"] = "message"
-        await message.reply_text("📝 Escribe el mensaje del correo.")
-    
-    elif isinstance(state, dict) and state.get("step") == "message":
-        response = send_spoof_email(state["to_email"], state["from_email"], state["subject"], message.text.strip())
-        await message.reply_text(f"✅ Respuesta: {response}")
-        user_states[user_id] = None
-    
-    elif state == "change_session":
-        global SESSION_ID
-        SESSION_ID = message.text.strip()
-        os.environ["SESSION_ID"] = SESSION_ID
-        await message.reply_text(f"✅ Nuevo SESSION_ID guardado.")
-        user_states[user_id] = None
-    
-    else:
-        await message.reply_text("⚠️ Opción no válida. Usa /start para volver al menú.")
+    except FloodWait as e:
+        await asyncio.sleep(e.value)
+        await message.reply_text("⚠️ Se ha detectado un exceso de solicitudes. Esperando...")
 
 # Ejecutar el bot
 if __name__ == "__main__":
