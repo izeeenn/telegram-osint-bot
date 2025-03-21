@@ -66,36 +66,35 @@ async def menu_navigation(client, callback_query):
 
     elif data == "search_instagram":
         await callback_query.message.edit_text("🔎 Envíame el **nombre de usuario** de Instagram.")
-
-        # ✅ Esperar respuesta sin crear un nuevo handler
-        response = await client.listen(callback_query.message.chat.id, filters=filters.text, timeout=60)
-        if response:
-            username = response.text.strip()
-            await search_instagram(client, callback_query.message, username)
+        await search_instagram(client, callback_query.message)
 
 # ✅ Función para buscar usuarios en Instagram
-async def search_instagram(client, message, username):
-    await message.reply_text("🔍 Buscando información, espera un momento...")
+async def search_instagram(client, message):
+    response = await client.listen(message.chat.id, filters=filters.text, timeout=60)
 
-    data = get_instagram_info(username, SESSION_ID)
+    if response:
+        username = response.text.strip()
+        await message.reply_text("🔍 Buscando información, espera un momento...")
 
-    if "error" in data:
-        await message.reply_text(f"❌ Error: {data['error']}")
-    else:
-        info_msg = (
-            f"📌 **Usuario:** {data['username']}\n"
-            f"📛 **Nombre:** {data['full_name']}\n"
-            f"🆔 **ID:** {data['user_id']}\n"
-            f"👥 **Seguidores:** {data['followers']}\n"
-            f"🔒 **Cuenta privada:** {'Sí' if data['is_private'] else 'No'}\n"
-            f"📝 **Bio:** {data['bio']}\n"
-            f"📧 **Email público:** {data['public_email']}\n"
-            f"📞 **Teléfono público:** {data['public_phone']}\n"
-            f"📧 **Correo oculto:** {data['obfuscated_email']}\n"
-            f"📞 **Teléfono oculto:** {data['obfuscated_phone']}\n"
-        )
-        
-        await message.reply_text(info_msg)
+        data = get_instagram_info(username, SESSION_ID)
+
+        if "error" in data:
+            await message.reply_text(f"❌ Error: {data['error']}")
+        else:
+            info_msg = (
+                f"📌 **Usuario:** {data['username']}\n"
+                f"📛 **Nombre:** {data['full_name']}\n"
+                f"🆔 **ID:** {data['user_id']}\n"
+                f"👥 **Seguidores:** {data['followers']}\n"
+                f"🔒 **Cuenta privada:** {'Sí' if data['is_private'] else 'No'}\n"
+                f"📝 **Bio:** {data['bio']}\n"
+                f"📧 **Email público:** {data['public_email']}\n"
+                f"📞 **Teléfono público:** {data['public_phone']}\n"
+                f"📧 **Correo oculto:** {data['obfuscated_email']}\n"
+                f"📞 **Teléfono oculto:** {data['obfuscated_phone']}\n"
+            )
+            
+            await message.reply_text(info_msg)
 
 # ✅ Función para obtener datos de Instagram
 def get_instagram_info(username, session_id):
@@ -112,21 +111,18 @@ def get_instagram_info(username, session_id):
     if not user_data:
         return {"error": "No se pudo obtener información del usuario"}
     
-    user_id = user_data.get("id", "Desconocido")
-    obfuscated_info = advanced_lookup(username, session_id)
-    
     return {
         "username": user_data.get("username", "No disponible"),
         "full_name": user_data.get("full_name", "No disponible"),
-        "user_id": user_id,
+        "user_id": user_data.get("id", "Desconocido"),
         "followers": user_data.get("edge_followed_by", {}).get("count", "No disponible"),
         "is_private": user_data.get("is_private", False),
         "bio": user_data.get("biography", "No disponible"),
         "profile_picture": user_data.get("profile_pic_url_hd", "No disponible"),
         "public_email": user_data.get("public_email", "No disponible"),
         "public_phone": user_data.get("public_phone_number", "No disponible"),
-        "obfuscated_email": obfuscated_info.get("obfuscated_email", "No disponible"),
-        "obfuscated_phone": obfuscated_info.get("obfuscated_phone", "No disponible"),
+        "obfuscated_email": "No disponible",
+        "obfuscated_phone": "No disponible",
     }
 
 # ✅ Email Spoofing con Mailgun
