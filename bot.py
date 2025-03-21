@@ -4,9 +4,9 @@ import requests
 from urllib.parse import quote_plus
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.handlers import MessageHandler, CallbackQueryHandler
 from dotenv import load_dotenv
 
-# Cargar variables desde .env
 load_dotenv()
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
@@ -15,7 +15,7 @@ SESSION_ID = os.getenv("SESSION_ID")
 
 app = Client("osint_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# Función para obtener info básica y avanzada de Instagram
+# Función para obtener información de Instagram
 def get_instagram_info(username, session_id):
     headers = {
         "User-Agent": "Instagram 101.0.0.15.120",
@@ -89,7 +89,9 @@ def back_menu():
         [InlineKeyboardButton("🔙 Volver al menú principal", callback_data="back_to_main")]
     ])
 
-# Comando /start
+# Estados por usuario (para saber si espera input)
+user_states = {}
+
 @app.on_message(filters.command("start"))
 async def start(client, message):
     await message.reply_text(
@@ -98,15 +100,32 @@ async def start(client, message):
         reply_markup=main_menu()
     )
 
-# Buscar usuario
 @app.on_callback_query(filters.regex("search_user"))
 async def handle_search_user(client, callback):
-    chat_id = callback.message.chat.id
-    await callback.message.edit_text("📥 Envíame el nombre de usuario de Instagram.")
+    user_id = callback.from_user.id
+    user_states[user_id] = "waiting_for_username"
+    await callback.message.edit_text("📥 Envíame el nombre de usuario de Instagram:")
 
-    async def username_listener(_, message):
-        if message.chat.id != chat_id:
-            return
+@app.on_callback_query(filters.regex("change_session"))
+async def change_session(client, callback):
+    user_id = callback.from_user.id
+    user_states[user_id] = "waiting_for_session"
+    await callback.message.edit_text("🔐 Envíame el nuevo SESSION_ID:")
+
+@app.on_callback_query(filters.regex("back_to_main"))
+async def back_to_main(client, callback):
+    await callback.message.edit_text(
+        f"🌟 **SESSION_ID actual:** `{SESSION_ID}`",
+        reply_markup=main_menu()
+    )
+
+@app.on_message(filters.private & filters.text)
+async def handle_text(client, message):
+    global SESSION_ID
+    user_id = message.from_user.id
+    state = user_states.get(user_id)
+
+    if state == "waiting_for_username":
         username = message.text.strip()
         await message.reply_text("🔍 Buscando información...")
 
@@ -115,7 +134,7 @@ async def handle_search_user(client, callback):
         if "error" in data:
             await message.reply_text(f"❌ Error: {data['error']}")
         else:
-            info = (
+            caption = (
                 f"📌 **Usuario:** {data['username']}\n"
                 f"📛 **Nombre:** {data['full_name']}\n"
                 f"🆔 **ID:** {data['user_id']}\n"
@@ -127,42 +146,23 @@ async def handle_search_user(client, callback):
                 f"📧 **Correo oculto:** {data['obfuscated_email']}\n"
                 f"📞 **Teléfono oculto:** {data['obfuscated_phone']}"
             )
-            await message.reply_photo(photo=data["profile_picture"], caption=info)
+            await message.reply_photo(data["profile_picture"], caption=caption)
 
-        app.remove_handler(username_listener, group=1)
+        user_states[user_id] = None
 
-    app.add_handler(filters.text & filters.private, username_listener, group=1)
-
-# Cambiar SESSION_ID
-@app.on_callback_query(filters.regex("change_session"))
-async def change_session(client, callback):
-    chat_id = callback.message.chat.id
-    await callback.message.edit_text("🔐 Envíame el nuevo SESSION_ID.")
-
-    async def session_listener(_, message):
-        global SESSION_ID
-        if message.chat.id != chat_id:
-            return
-        new_session = message.text.strip()
-        if not new_session:
+    elif state == "waiting_for_session":
+        new_sid = message.text.strip()
+        if new_sid:
+            SESSION_ID = new_sid
+            await message.reply_text("✅ SESSION_ID actualizado correctamente.")
+        else:
             await message.reply_text("❌ El SESSION_ID no puede estar vacío.")
-            return
-        SESSION_ID = new_session
-        await message.reply_text("✅ SESSION_ID actualizado.")
-        app.remove_handler(session_listener, group=2)
+        user_states[user_id] = None
+
         await message.reply_text(
             f"🌟 **SESSION_ID actual:** `{SESSION_ID}`",
             reply_markup=main_menu()
         )
-
-    app.add_handler(filters.text & filters.private, session_listener, group=2)
-
-@app.on_callback_query(filters.regex("back_to_main"))
-async def back_to_main(client, callback):
-    await callback.message.edit_text(
-        f"🌟 **SESSION_ID actual:** `{SESSION_ID}`",
-        reply_markup=main_menu()
-    )
 
 if __name__ == "__main__":
     print("✅ Bot OSINT corriendo en Railway")
