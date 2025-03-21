@@ -5,9 +5,6 @@ from urllib.parse import quote_plus
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
-import phonenumbers
-from phonenumbers.phonenumberutil import region_code_for_country_code
-import pycountry
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
