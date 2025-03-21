@@ -1,26 +1,14 @@
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from dotenv import load_dotenv
 import os
 import requests
 
-# Cargar variables de entorno
-load_dotenv()
-
-# Configuración del bot
-API_ID = int(os.getenv("API_ID"))
-API_HASH = os.getenv("API_HASH")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+# Configuración de Mailgun
 MAILGUN_API_KEY = os.getenv("MAILGUN_API_KEY")
 MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN")
 
-# Definir el bot
-app = Client(
-    "osint_bot",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    bot_token=BOT_TOKEN
-)
+# Inicialización del bot
+app = Client("my_bot", api_id=os.getenv("API_ID"), api_hash=os.getenv("API_HASH"), bot_token=os.getenv("BOT_TOKEN"))
 
 # Función para construir el nuevo menú principal
 def main_menu():
@@ -46,6 +34,14 @@ def tools_menu():
         [InlineKeyboardButton("🔙 Volver", callback_data="back_to_main")]
     ]
     return InlineKeyboardMarkup(botones)
+
+# Comando /start
+@app.on_message(filters.command("start") & filters.private)
+async def start_command(client, message):
+    await message.reply_text(
+        "🌟 **Menú Principal**\nSelecciona una categoría:",
+        reply_markup=main_menu()
+    )
 
 # Callback para mostrar el menú de Instagram
 @app.on_callback_query(filters.regex("menu_instagram"))
@@ -74,30 +70,30 @@ async def email_spoofing_start(client, callback_query):
         if message.chat.id == chat_id:
             fake_name = message.text.strip()
             await message.reply_text("📩 Ahora, ingresa el **correo del remitente falso**.")
-
+            
             @app.on_message(filters.text & filters.private)
             async def get_fake_sender(client, message):
                 if message.chat.id == chat_id:
                     fake_sender = message.text.strip()
                     await message.reply_text("📩 Ahora, ingresa el **correo del destinatario**.")
-
+                    
                     @app.on_message(filters.text & filters.private)
                     async def get_recipient(client, message):
                         if message.chat.id == chat_id:
                             recipient = message.text.strip()
                             await message.reply_text("✏️ Ahora, ingresa el **asunto del correo**.")
-
+                            
                             @app.on_message(filters.text & filters.private)
                             async def get_subject(client, message):
                                 if message.chat.id == chat_id:
                                     subject = message.text.strip()
                                     await message.reply_text("📝 Finalmente, ingresa el **mensaje del correo** (puede ser en HTML).")
-
+                                    
                                     @app.on_message(filters.text & filters.private)
                                     async def get_message(client, message):
                                         if message.chat.id == chat_id:
                                             email_message = message.text.strip()
-
+                                            
                                             # Confirmación antes de enviar
                                             await message.reply_text(
                                                 f"🧐 **Vista previa:**\n\n"
@@ -111,7 +107,7 @@ async def email_spoofing_start(client, callback_query):
                                                     [InlineKeyboardButton("❌ Cancelar", callback_data="back_to_main")]
                                                 ])
                                             )
-
+                                            
                                             # Guardamos los datos en el contexto del chat
                                             client.chat_data[chat_id] = {
                                                 "fake_name": fake_name,
@@ -126,7 +122,7 @@ async def email_spoofing_start(client, callback_query):
 async def confirm_send_email(client, callback_query):
     chat_id = callback_query.message.chat.id
     email_data = client.chat_data.get(chat_id, {})
-
+    
     response = send_email(
         email_data.get("fake_name"),
         email_data.get("fake_sender"),
@@ -134,7 +130,7 @@ async def confirm_send_email(client, callback_query):
         email_data.get("subject"),
         email_data.get("email_message")
     )
-
+    
     if response:
         await callback_query.message.edit_text("✅ **Correo enviado con éxito.**")
     else:
