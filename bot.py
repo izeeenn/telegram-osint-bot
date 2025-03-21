@@ -1,108 +1,111 @@
 import os
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from pyrogram import Client, filters
-from pyrogram.errors import FloodWait
 import requests
-from pyrogram.types import CallbackQuery
+import json
+from pyrogram import Client, filters
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
-import phonenumbers
+from session_manager import load_session, save_session  # Importar la gestión de sesión
 
-# Cargar variables de entorno desde .env
+# Cargar variables de entorno
 load_dotenv()
 
-API_ID = os.getenv("API_ID")
+API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-MAILGUN_API_KEY = os.getenv("MAILGUN_API_KEY")
-MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN")
 
-# Iniciar el bot con Pyrogram
-app = Client("my_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+# Cargar SESSION_ID desde el archivo
+SESSION_ID = load_session()
 
-# Función de búsqueda de usuarios en Instagram
-def search_instagram_user(username):
-    # Lógica de búsqueda para obtener información de Instagram (puedes agregar más lógica aquí)
-    response = requests.get(f'https://www.instagram.com/{username}/')
-    if response.status_code == 200:
-        return f"Información del perfil de Instagram para @{username}: {response.url}"
-    else:
-        return "No se pudo encontrar el perfil de Instagram."
+app = Client(
+    "osint_bot",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN
+)
 
-# Función para el spoofing de correos electrónicos
-def send_spoofed_email(to_email, subject, body, from_email, smtp_server="smtp.mailgun.org"):
-    msg = MIMEMultipart()
-    msg['From'] = from_email
-    msg['To'] = to_email
-    msg['Subject'] = subject
-    msg.attach(MIMEText(body, 'plain'))
+# Función para obtener datos de Instagram
+def get_instagram_info(username, session_id):
+    headers = {"User-Agent": "Instagram 101.0.0.15.120", "x-ig-app-id": "936619743392459"}
+    cookies = {"sessionid": session_id}
+    
+    profile_url = f'https://i.instagram.com/api/v1/users/web_profile_info/?username={username}'
+    response = requests.get(profile_url, headers=headers, cookies=cookies)
+
+    if response.status_code == 404:
+        return {"error": "Usuario no encontrado"}
+    elif response.status_code in [403, 429]:
+        return {"error": "Instagram ha bloqueado las solicitudes. Intenta más tarde."}
 
     try:
-        server = smtplib.SMTP(smtp_server, 587)
-        server.starttls()
-        server.login(f"postmaster@{MAILGUN_DOMAIN}", MAILGUN_API_KEY)
-        server.sendmail(from_email, to_email, msg.as_string())
-        server.close()
-        return "Correo enviado correctamente."
-    except Exception as e:
-        return f"Error al enviar el correo: {str(e)}"
+        user_data = response.json().get("data", {}).get("user", {})
+    except json.JSONDecodeError:
+        return {"error": "Error en la respuesta de Instagram"}
 
-# Función de validación de teléfono
-def validate_phone_number(phone_number):
-    try:
-        parsed_number = phonenumbers.parse(phone_number, "ES")
-        if phonenumbers.is_valid_number(parsed_number):
-            return "El número es válido."
-        else:
-            return "El número no es válido."
-    except phonenumbers.phonenumberutil.NumberParseException:
-        return "Error al analizar el número."
+    if not user_data:
+        return {"error": "No se pudo obtener información del usuario"}
+    
+    return {
+        "username": user_data.get("username", "No disponible"),
+        "full_name": user_data.get("full_name", "No disponible"),
+        "followers": user_data.get("edge_followed_by", {}).get("count", "No disponible"),
+        "is_private": user_data.get("is_private", False),
+        "bio": user_data.get("biography", "No disponible"),
+        "profile_picture": user_data.get("profile_pic_url_hd", "No disponible"),
+    }
 
-# Función para cambiar la sesión de Telegram
-async def change_session(callback_query: CallbackQuery):
-    await callback_query.message.edit_text("🔐 Envíame el **nuevo SESSION_ID**.")
-    # Lógica para cambiar el session_id según el comando que recibe el usuario
+# Menú principal
+def main_menu():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔎 Buscar usuario de Instagram", callback_data="search_user")],
+        [InlineKeyboardButton("🔑 Cambiar SESSION_ID", callback_data="change_session")]
+    ])
 
-# Función para iniciar la búsqueda de un usuario
-async def search_user(client, message):
-    await message.reply("🔍 Envíame el **nombre de usuario** de Instagram que quieres buscar.")
-
-# Manejadores de comandos
 @app.on_message(filters.command("start"))
 async def start(client, message):
-    await message.reply("¡Hola! Soy tu bot. Usa /search para buscar un usuario en Instagram o /change para cambiar tu sesión.")
+    await message.reply_text(
+        f"🌟 **SESSION_ID actual:** `{SESSION_ID}`\n\n"
+        "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
+        reply_markup=main_menu()
+    )
 
-@app.on_message(filters.command("search"))
-async def search(client, message):
-    await search_user(client, message)
+@app.on_callback_query(filters.regex("search_user"))
+async def search_user(client, callback_query):
+    await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram que quieres buscar.")
 
-@app.on_message(filters.command("change"))
-async def change(client, message):
-    await message.reply("🔐 Envíame el **nuevo SESSION_ID** para cambiar la sesión.")
+    @app.listen(filters.private & filters.text)
+    async def receive_username(client, message):
+        username = message.text.strip()
+        await message.reply_text("🔍 Buscando información, espera un momento...")
+        data = get_instagram_info(username, SESSION_ID)
 
-@app.on_message(filters.command("email"))
-async def spoof_email(client, message):
-    # Pide al usuario que ingrese el correo de destino
-    await message.reply("Por favor, proporciona el correo electrónico de destino.")
-    # Lógica para enviar un correo spoofed
-    to_email = "destinatario@example.com"
-    subject = "Asunto del correo"
-    body = "Este es el cuerpo del correo."
-    from_email = "remitente@tudominio.com"
-    result = send_spoofed_email(to_email, subject, body, from_email)
-    await message.reply(result)
+        if "error" in data:
+            await message.reply_text(f"❌ Error: {data['error']}")
+        else:
+            info_msg = (
+                f"📌 **Usuario:** {data['username']}\n"
+                f"📛 **Nombre:** {data['full_name']}\n"
+                f"👥 **Seguidores:** {data['followers']}\n"
+                f"🔒 **Cuenta privada:** {'Sí' if data['is_private'] else 'No'}\n"
+                f"📝 **Bio:** {data['bio']}\n"
+            )
+            await message.reply_photo(photo=data['profile_picture'], caption=info_msg)
 
-@app.on_message(filters.command("phone"))
-async def validate_phone(client, message):
-    phone_number = message.text.split(' ', 1)[-1]  # El número de teléfono está después del comando
-    result = validate_phone_number(phone_number)
-    await message.reply(result)
+@app.on_callback_query(filters.regex("change_session"))
+async def change_session(client, callback_query):
+    await callback_query.message.edit_text("🔐 Envíame el **nuevo SESSION_ID**.")
 
-# Configuración de la gestión de sesiones y otras configuraciones del bot
-@app.on_callback_query(filters.regex("session"))
-async def session_callback(client, callback_query):
-    await change_session(callback_query)
+    @app.listen(filters.private & filters.text)
+    async def receive_new_session(client, message):
+        global SESSION_ID
+        new_session = message.text.strip()
+        
+        if new_session:
+            SESSION_ID = new_session
+            save_session(new_session)  # Guardar en archivo
+            await message.reply_text(f"✅ Nuevo SESSION_ID guardado: `{SESSION_ID}`")
+        else:
+            await message.reply_text("❌ El SESSION_ID no puede estar vacío.")
 
-# Arrancar el bot
-app.run()
+# Ejecutar el bot
+if __name__ == "__main__":
+    app.run()
