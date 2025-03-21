@@ -5,9 +5,6 @@ from urllib.parse import quote_plus
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
-import phonenumbers
-from phonenumbers.phonenumberutil import region_code_for_country_code
-import pycountry
 
 # Cargar variables de entorno
 load_dotenv()
@@ -40,6 +37,24 @@ def send_spoofed_email(from_email, to_email, subject, message):
 
     response = requests.post(url, auth=auth, data=data)
     return response.json()
+
+# Comando para enviar correos falsificados
+@app.on_message(filters.command("spoofemail") & filters.private)
+async def spoof_email(client, message):
+    args = message.text.split(" ", 4)  # Separa en máximo 5 partes
+    
+    if len(args) < 5:
+        await message.reply_text("❌ Uso incorrecto.\nFormato correcto:\n`/spoofemail remitente destinatario asunto mensaje`")
+        return
+    
+    from_email, to_email, subject, message_text = args[1], args[2], args[3], args[4]
+
+    response = send_spoofed_email(from_email, to_email, subject, message_text)
+
+    if response.get("message") == "Queued. Thank you.":
+        await message.reply_text(f"✅ Correo enviado con éxito de `{from_email}` a `{to_email}`.")
+    else:
+        await message.reply_text(f"❌ Error al enviar el correo: {response}")
 
 # Función para obtener datos de Instagram
 def get_instagram_info(username, session_id):
@@ -87,25 +102,37 @@ def advanced_lookup(username, session_id):
     except json.JSONDecodeError:
         return {"error": "Rate limit"}
 
-# Comando para enviar correos falsificados
-@app.on_message(filters.command("spoofemail") & filters.private)
-async def spoof_email(client, message):
-    args = message.text.split(" ", 3)
-    if len(args) < 4:
-        await message.reply_text("Uso: `/spoofemail remitente destinatario asunto mensaje`")
+# Comando para buscar un usuario de Instagram
+@app.on_message(filters.command("insta") & filters.private)
+async def search_instagram(client, message):
+    args = message.text.split(" ", 1)
+    
+    if len(args) < 2:
+        await message.reply_text("❌ Uso incorrecto.\nFormato correcto:\n`/insta usuario`")
         return
     
-    from_email = args[1]
-    to_email = args[2]
-    subject = args[3]
-    message_text = " ".join(args[4:])
+    username = args[1]
+    await message.reply_text("🔍 Buscando información, espera un momento...")
 
-    response = send_spoofed_email(from_email, to_email, subject, message_text)
+    data = get_instagram_info(username, SESSION_ID)
 
-    if response.get("message") == "Queued. Thank you.":
-        await message.reply_text(f"✅ Correo enviado con éxito de {from_email} a {to_email}.")
+    if "error" in data:
+        await message.reply_text(f"❌ Error: {data['error']}")
     else:
-        await message.reply_text(f"❌ Error al enviar el correo: {response}")
+        info_msg = (
+            f"📌 **Usuario:** {data['username']}\n"
+            f"📛 **Nombre:** {data['full_name']}\n"
+            f"🆔 **ID:** {data['user_id']}\n"
+            f"👥 **Seguidores:** {data['followers']}\n"
+            f"🔒 **Cuenta privada:** {'Sí' if data['is_private'] else 'No'}\n"
+            f"📝 **Bio:** {data['bio']}\n"
+            f"📧 **Email público:** {data['public_email']}\n"
+            f"📞 **Teléfono público:** {data['public_phone']}\n"
+            f"📧 **Correo oculto:** {data['obfuscated_email']}\n"
+            f"📞 **Teléfono oculto:** {data['obfuscated_phone']}\n"
+        )
+        
+        await message.reply_text(info_msg)
 
 # Ejecutar el bot
 if __name__ == "__main__":
