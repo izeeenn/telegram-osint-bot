@@ -2,6 +2,10 @@ from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import os
 import requests
+from dotenv import load_dotenv
+
+# Cargar variables de entorno desde .env
+load_dotenv()
 
 # Configuración de Mailgun
 MAILGUN_API_KEY = os.getenv("MAILGUN_API_KEY", "")
@@ -11,6 +15,11 @@ MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN", "")
 API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+# Depuración: Imprimir valores cargados
+print("API_ID:", API_ID)
+print("API_HASH:", API_HASH)
+print("BOT_TOKEN:", BOT_TOKEN)
 
 if not API_ID or not API_HASH or not BOT_TOKEN:
     raise ValueError("Error: Faltan credenciales en las variables de entorno.")
