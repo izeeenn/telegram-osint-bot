@@ -2,6 +2,7 @@ import os
 import json
 import requests
 from urllib.parse import quote_plus
+from bs4 import BeautifulSoup
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.handlers import MessageHandler, CallbackQueryHandler
@@ -77,10 +78,40 @@ def advanced_lookup(username, session_id):
     except Exception:
         return {"obfuscated_email": "Error", "obfuscated_phone": "Error"}
 
+# Función para buscar datos de matrícula (web scraping)
+def get_plate_info(plate_number):
+    try:
+        url = f"https://www.infovehiculo.es/placa/{plate_number.upper()}"
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code != 200:
+            return {"error": "No se pudo acceder a la página."}
+
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        datos = soup.find_all("div", class_="uk-width-expand@m")
+        if not datos:
+            return {"error": "No se encontró información para esa matrícula."}
+
+        info_text = ""
+        for dato in datos:
+            title = dato.find("h3")
+            value = dato.find("p")
+            if title and value:
+                info_text += f"**{title.text.strip()}**: {value.text.strip()}\n"
+
+        return {"data": info_text.strip() or "Sin información relevante"}
+
+    except Exception as e:
+        return {"error": f"Error al buscar matrícula: {str(e)}"}
+
 # Menús
 def main_menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔎 Buscar usuario de Instagram", callback_data="search_user")],
+        [InlineKeyboardButton("🚗 OSINT Spain Plates", callback_data="search_plate")],
         [InlineKeyboardButton("🔑 Cambiar SESSION_ID", callback_data="change_session")]
     ])
 
@@ -105,6 +136,12 @@ async def handle_search_user(client, callback):
     user_id = callback.from_user.id
     user_states[user_id] = "waiting_for_username"
     await callback.message.edit_text("📥 Envíame el nombre de usuario de Instagram:")
+
+@app.on_callback_query(filters.regex("search_plate"))
+async def handle_search_plate(client, callback):
+    user_id = callback.from_user.id
+    user_states[user_id] = "waiting_for_plate"
+    await callback.message.edit_text("🚘 Envíame una matrícula española (por ejemplo: 1234ABC):")
 
 @app.on_callback_query(filters.regex("change_session"))
 async def change_session(client, callback):
@@ -147,6 +184,18 @@ async def handle_text(client, message):
                 f"📞 **Teléfono oculto:** {data['obfuscated_phone']}"
             )
             await message.reply_photo(data["profile_picture"], caption=caption)
+
+        user_states[user_id] = None
+
+    elif state == "waiting_for_plate":
+        plate = message.text.strip().upper()
+        await message.reply_text(f"🔍 Buscando información de {plate}...")
+
+        result = get_plate_info(plate)
+        if "error" in result:
+            await message.reply_text(f"❌ {result['error']}")
+        else:
+            await message.reply_text(f"🚗 Información de {plate}:\n\n{result['data']}", reply_markup=back_menu())
 
         user_states[user_id] = None
 
