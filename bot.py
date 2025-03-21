@@ -1,7 +1,6 @@
 import os
 import requests
 import json
-import asyncio
 from urllib.parse import quote_plus
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -32,7 +31,7 @@ def get_instagram_info(username, session_id):
     
     profile_url = f'https://i.instagram.com/api/v1/users/web_profile_info/?username={username}'
     response = requests.get(profile_url, headers=headers, cookies=cookies)
-
+    
     if response.status_code == 404:
         return {"error": "Usuario no encontrado"}
     
@@ -40,8 +39,6 @@ def get_instagram_info(username, session_id):
     if not user_data:
         return {"error": "No se pudo obtener información del usuario"}
     
-    obfuscated_info = advanced_lookup(username, session_id)
-
     return {
         "username": user_data.get("username", "No disponible"),
         "full_name": user_data.get("full_name", "No disponible"),
@@ -49,28 +46,10 @@ def get_instagram_info(username, session_id):
         "followers": user_data.get("edge_followed_by", {}).get("count", "No disponible"),
         "is_private": user_data.get("is_private", False),
         "bio": user_data.get("biography", "No disponible"),
-        "profile_picture": user_data.get("profile_pic_url_hd", "No disponible"),
-        "public_email": user_data.get("public_email", "No disponible"),
-        "public_phone": user_data.get("public_phone_number", "No disponible"),
-        "obfuscated_email": obfuscated_info.get("obfuscated_email", "No disponible"),
-        "obfuscated_phone": obfuscated_info.get("obfuscated_phone", "No disponible"),
+        "profile_picture": user_data.get("profile_pic_url_hd", "No disponible")
     }
 
-# Función para obtener datos ocultos de Instagram
-def advanced_lookup(username, session_id):
-    data = "signed_body=SIGNATURE." + quote_plus(json.dumps({"q": username, "skip_recovery": "1"}))
-    headers = {
-        "User-Agent": "Instagram 101.0.0.15.120",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-    }
-    response = requests.post("https://i.instagram.com/api/v1/users/lookup/", headers=headers, data=data, cookies={"sessionid": session_id})
-    
-    try:
-        return response.json()
-    except json.JSONDecodeError:
-        return {"error": "Rate limit"}
-
-# Función para enviar correos falsificados
+# Enviar email spoof usando Mailgun
 def send_spoof_email(to_email, from_email, subject, message):
     url = f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages"
     auth = ("api", MAILGUN_API_KEY)
@@ -87,75 +66,79 @@ def send_spoof_email(to_email, from_email, subject, message):
 def main_menu():
     botones = [
         [InlineKeyboardButton("🔎 Buscar usuario de Instagram", callback_data="search_user")],
-        [InlineKeyboardButton("🔑 Cambiar SESSION_ID", callback_data="change_session")],
-        [InlineKeyboardButton("📧 Email Spoofing", callback_data="email_spoof")]
+        [InlineKeyboardButton("📧 Email Spoof", callback_data="email_spoof")],
+        [InlineKeyboardButton("🔑 Cambiar SESSION_ID", callback_data="change_session")]
     ]
     return InlineKeyboardMarkup(botones)
 
-# Comando /start
 @app.on_message(filters.command("start"))
 async def start(client, message):
     await message.reply_text(
-        f"🌟 **SESSION_ID actual:** `{SESSION_ID}`\n\n"
-        "¡Bienvenido! 🔍\nSelecciona una opción:",
+        "🌟 Bienvenido al bot OSINT! 🔍\nSelecciona una opción:",
         reply_markup=main_menu()
     )
 
-# Callback para buscar usuario
 @app.on_callback_query(filters.regex("search_user"))
 async def search_user(client, callback_query):
-    chat_id = callback_query.message.chat.id
-    await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram:")
+    await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram.")
 
-    username_msg = await app.listen(chat_id, filters.text)
-    username = username_msg.text.strip()
-    
-    await username_msg.reply_text("🔍 Buscando información, espera un momento...")
-    data = get_instagram_info(username, SESSION_ID)
+    @app.on_message(filters.text & filters.private)
+    async def receive_username(client, message):
+        username = message.text.strip()
+        await message.reply_text("🔍 Buscando información...")
+        data = get_instagram_info(username, SESSION_ID)
+        if "error" in data:
+            await message.reply_text(f"❌ Error: {data['error']}")
+        else:
+            info_msg = f"📌 **Usuario:** {data['username']}\n📛 **Nombre:** {data['full_name']}\n🆔 **ID:** {data['user_id']}\n👥 **Seguidores:** {data['followers']}\n🔒 **Privado:** {'Sí' if data['is_private'] else 'No'}\n📝 **Bio:** {data['bio']}"
+            await message.reply_photo(photo=data['profile_picture'], caption=info_msg)
+        app.remove_handler(receive_username)
 
-    if "error" in data:
-        await username_msg.reply_text(f"❌ Error: {data['error']}")
-    else:
-        info_msg = (
-            f"📌 **Usuario:** {data['username']}\n"
-            f"📛 **Nombre:** {data['full_name']}\n"
-            f"🆔 **ID:** {data['user_id']}\n"
-            f"👥 **Seguidores:** {data['followers']}\n"
-            f"🔒 **Cuenta privada:** {'Sí' if data['is_private'] else 'No'}\n"
-            f"📝 **Bio:** {data['bio']}\n"
-            f"📧 **Email oculto:** {data['obfuscated_email']}\n"
-            f"📞 **Teléfono oculto:** {data['obfuscated_phone']}\n"
-        )
-        await username_msg.reply_photo(
-            photo=data['profile_picture'],
-            caption=info_msg
-        )
-
-# Callback para cambiar SESSION_ID
-@app.on_callback_query(filters.regex("change_session"))
-async def change_session(client, callback_query):
-    chat_id = callback_query.message.chat.id
-    await callback_query.message.edit_text("🔐 Envíame el **nuevo SESSION_ID**.")
-
-    new_session_msg = await app.listen(chat_id, filters.text)
-    global SESSION_ID
-    SESSION_ID = new_session_msg.text.strip()
-    
-    await new_session_msg.reply_text(f"✅ Nuevo SESSION_ID guardado: `{SESSION_ID}`")
-    await new_session_msg.reply_text("🌟 **Menú principal:**", reply_markup=main_menu())
-
-# Callback para email spoofing
 @app.on_callback_query(filters.regex("email_spoof"))
 async def email_spoof(client, callback_query):
-    chat_id = callback_query.message.chat.id
-    await callback_query.message.edit_text("✉️ Envíame el email en formato: `destino,origen,asunto,mensaje`")
+    await callback_query.message.edit_text("📧 Envíame el correo del destinatario.")
 
-    email_msg = await app.listen(chat_id, filters.text)
-    to_email, from_email, subject, message = email_msg.text.split(",")
+    @app.on_message(filters.text & filters.private)
+    async def receive_email(client, message):
+        to_email = message.text.strip()
+        await message.reply_text("📧 Ahora ingresa el correo del remitente falso.")
+        
+        @app.on_message(filters.text & filters.private)
+        async def receive_from_email(client, message):
+            from_email = message.text.strip()
+            await message.reply_text("✉️ Escribe el asunto del correo.")
+            
+            @app.on_message(filters.text & filters.private)
+            async def receive_subject(client, message):
+                subject = message.text.strip()
+                await message.reply_text("📝 Escribe el mensaje del correo.")
+                
+                @app.on_message(filters.text & filters.private)
+                async def receive_message(client, message):
+                    message_text = message.text.strip()
+                    response = send_spoof_email(to_email, from_email, subject, message_text)
+                    await message.reply_text(f"✅ Respuesta: {response}")
+                    app.remove_handler(receive_message)
+                
+                app.add_handler(receive_message)
+            
+            app.add_handler(receive_subject)
+        
+        app.add_handler(receive_from_email)
+    
+    app.add_handler(receive_email)
 
-    result = send_spoof_email(to_email.strip(), from_email.strip(), subject.strip(), message.strip())
-
-    await email_msg.reply_text(f"📨 **Email enviado**\n🔹 Estado: {result['message']}")
+@app.on_callback_query(filters.regex("change_session"))
+async def change_session(client, callback_query):
+    await callback_query.message.edit_text("🔑 Envíame el nuevo SESSION_ID.")
+    
+    @app.on_message(filters.text & filters.private)
+    async def receive_new_session(client, message):
+        global SESSION_ID
+        SESSION_ID = message.text.strip()
+        os.environ["SESSION_ID"] = SESSION_ID
+        await message.reply_text(f"✅ Nuevo SESSION_ID guardado.")
+        app.remove_handler(receive_new_session)
 
 # Ejecutar el bot
 if __name__ == "__main__":
