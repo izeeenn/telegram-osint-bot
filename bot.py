@@ -8,12 +8,14 @@ MAILGUN_API_KEY = os.getenv("MAILGUN_API_KEY", "")
 MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN", "")
 
 # Verificación de credenciales
-API_ID = int(os.getenv("API_ID", "0"))
-API_HASH = os.getenv("API_HASH", "")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+API_ID = os.getenv("API_ID")
+API_HASH = os.getenv("API_HASH")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-if not all([API_ID, API_HASH, BOT_TOKEN]):
+if not API_ID or not API_HASH or not BOT_TOKEN:
     raise ValueError("Error: Faltan credenciales en las variables de entorno.")
+
+API_ID = int(API_ID)  # Convertir API_ID a entero
 
 # Inicialización del bot
 app = Client("my_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
