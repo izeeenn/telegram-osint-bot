@@ -24,6 +24,8 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
+user_states = {}
+
 # Función para obtener datos de Instagram
 def get_instagram_info(username, session_id):
     headers = {"User-Agent": "Instagram 101.0.0.15.120", "x-ig-app-id": "936619743392459"}
@@ -73,6 +75,7 @@ def main_menu():
 
 @app.on_message(filters.command("start"))
 async def start(client, message):
+    user_states[message.chat.id] = None
     await message.reply_text(
         "🌟 Bienvenido al bot OSINT! 🔍\nSelecciona una opción:",
         reply_markup=main_menu()
@@ -80,51 +83,63 @@ async def start(client, message):
 
 @app.on_callback_query(filters.regex("search_user"))
 async def search_user(client, callback_query):
+    user_states[callback_query.message.chat.id] = "search_user"
     await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram.")
-
-@app.on_message(filters.text & filters.private)
-async def receive_username(client, message):
-    username = message.text.strip()
-    await message.reply_text("🔍 Buscando información...")
-    data = get_instagram_info(username, SESSION_ID)
-    if "error" in data:
-        await message.reply_text(f"❌ Error: {data['error']}")
-    else:
-        info_msg = f"📌 **Usuario:** {data['username']}\n📛 **Nombre:** {data['full_name']}\n🆔 **ID:** {data['user_id']}\n👥 **Seguidores:** {data['followers']}\n🔒 **Privado:** {'Sí' if data['is_private'] else 'No'}\n📝 **Bio:** {data['bio']}"
-        await message.reply_photo(photo=data['profile_picture'], caption=info_msg)
 
 @app.on_callback_query(filters.regex("email_spoof"))
 async def email_spoof(client, callback_query):
+    user_states[callback_query.message.chat.id] = "email_spoof"
     await callback_query.message.edit_text("📧 Envíame el correo del destinatario.")
-
-@app.on_message(filters.text & filters.private)
-async def receive_email(client, message):
-    to_email = message.text.strip()
-    await message.reply_text("📧 Ahora ingresa el correo del remitente falso.")
-    
-    from_email_msg = await app.listen(message.chat.id)
-    from_email = from_email_msg.text.strip()
-    await message.reply_text("✉️ Escribe el asunto del correo.")
-    
-    subject_msg = await app.listen(message.chat.id)
-    subject = subject_msg.text.strip()
-    await message.reply_text("📝 Escribe el mensaje del correo.")
-    
-    message_msg = await app.listen(message.chat.id)
-    message_text = message_msg.text.strip()
-    response = send_spoof_email(to_email, from_email, subject, message_text)
-    await message.reply_text(f"✅ Respuesta: {response}")
 
 @app.on_callback_query(filters.regex("change_session"))
 async def change_session(client, callback_query):
+    user_states[callback_query.message.chat.id] = "change_session"
     await callback_query.message.edit_text("🔑 Envíame el nuevo SESSION_ID.")
 
 @app.on_message(filters.text & filters.private)
-async def receive_new_session(client, message):
-    global SESSION_ID
-    SESSION_ID = message.text.strip()
-    os.environ["SESSION_ID"] = SESSION_ID
-    await message.reply_text(f"✅ Nuevo SESSION_ID guardado.")
+async def handle_user_input(client, message):
+    user_id = message.chat.id
+    state = user_states.get(user_id)
+    
+    if state == "search_user":
+        username = message.text.strip()
+        await message.reply_text("🔍 Buscando información...")
+        data = get_instagram_info(username, SESSION_ID)
+        if "error" in data:
+            await message.reply_text(f"❌ Error: {data['error']}")
+        else:
+            info_msg = f"📌 **Usuario:** {data['username']}\n📛 **Nombre:** {data['full_name']}\n🆔 **ID:** {data['user_id']}\n👥 **Seguidores:** {data['followers']}\n🔒 **Privado:** {'Sí' if data['is_private'] else 'No'}\n📝 **Bio:** {data['bio']}"
+            await message.reply_photo(photo=data['profile_picture'], caption=info_msg)
+        user_states[user_id] = None
+    
+    elif state == "email_spoof":
+        user_states[user_id] = {"step": "from_email", "to_email": message.text.strip()}
+        await message.reply_text("📧 Ahora ingresa el correo del remitente falso.")
+    
+    elif isinstance(state, dict) and state.get("step") == "from_email":
+        state["from_email"] = message.text.strip()
+        state["step"] = "subject"
+        await message.reply_text("✉️ Escribe el asunto del correo.")
+    
+    elif isinstance(state, dict) and state.get("step") == "subject":
+        state["subject"] = message.text.strip()
+        state["step"] = "message"
+        await message.reply_text("📝 Escribe el mensaje del correo.")
+    
+    elif isinstance(state, dict) and state.get("step") == "message":
+        response = send_spoof_email(state["to_email"], state["from_email"], state["subject"], message.text.strip())
+        await message.reply_text(f"✅ Respuesta: {response}")
+        user_states[user_id] = None
+    
+    elif state == "change_session":
+        global SESSION_ID
+        SESSION_ID = message.text.strip()
+        os.environ["SESSION_ID"] = SESSION_ID
+        await message.reply_text(f"✅ Nuevo SESSION_ID guardado.")
+        user_states[user_id] = None
+    
+    else:
+        await message.reply_text("⚠️ Opción no válida. Usa /start para volver al menú.")
 
 # Ejecutar el bot
 if __name__ == "__main__":
