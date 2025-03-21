@@ -5,3 +5,4 @@ python-dotenv
 phonenumbers
 pycountry
 beautifulsoup4
+mailgun-python
