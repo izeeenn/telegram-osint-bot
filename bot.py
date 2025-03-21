@@ -1,126 +1,85 @@
-from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-import os
+import logging
 import smtplib
 from email.mime.text import MIMEText
-from dotenv import load_dotenv
+from email.mime.multipart import MIMEMultipart
+from telegram import Update
+from telegram.ext import Updater, CommandHandler, CallbackContext
 
-# Cargar variables de entorno desde .env
-load_dotenv()
+# Configuración de logging
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Configuración de SMTP local
-SMTP_SERVER = os.getenv("SMTP_SERVER", "localhost")
-SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
-SMTP_USER = os.getenv("SMTP_USER", "")
-SMTP_PASS = os.getenv("SMTP_PASSWORD", "")
+# Token de tu bot
+BOT_TOKEN = '7063978224:AAF0YIR07nep1ygCgLPY9GdXrndV-3efVgU'
 
-# Verificación de credenciales
-API_ID = os.getenv("API_ID")
-API_HASH = os.getenv("API_HASH")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-SESSION_ID = os.getenv("SESSION_ID")
+# Detalles para el Email Spoofing
+SENDER_EMAIL = "tucorreo@gmail.com"  # Tu correo real
+SENDER_PASSWORD = "tu_contraseña"  # La contraseña de tu cuenta de correo
+SMTP_SERVER = "smtp.gmail.com"  # Usamos Gmail como servidor SMTP
+SMTP_PORT = 587
 
-if not API_ID or not API_HASH or not BOT_TOKEN or not SESSION_ID or not SMTP_USER or not SMTP_PASS:
-    raise ValueError("Error: Faltan credenciales en las variables de entorno. Verifica tu archivo .env")
+# Comando /start
+def start(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text('¡Hola! Soy tu bot, ¿en qué puedo ayudarte?')
 
-API_ID = int(API_ID)  # Convertir API_ID a entero
-
-# Inicialización del bot
-app = Client("my_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-
-draft_emails = {}
-
-def main_menu():
-    return InlineKeyboardMarkup([ 
-        [InlineKeyboardButton("📌 Instagram", callback_data="menu_instagram")], 
-        [InlineKeyboardButton("🛠 Tools", callback_data="menu_tools")], 
-        [InlineKeyboardButton("ℹ️ Acerca del Bot", callback_data="about_bot")] 
-    ])
-
-def tools_menu():
-    return InlineKeyboardMarkup([ 
-        [InlineKeyboardButton("✉️ Email Spoofing", callback_data="email_spoofing")], 
-        [InlineKeyboardButton("🔙 Volver", callback_data="back_to_main")] 
-    ])
-
-@app.on_callback_query(filters.regex("email_spoofing"))
-async def email_spoofing_start(client, callback_query):
-    await callback_query.message.edit_text(
-        "✉️ **Email Spoofing**\nIngresa el remitente falso en este formato: `Nombre <correo@falso.com>`"
-    )
-
-@app.on_message(filters.text & filters.private)
-async def email_spoofing_flow(client, message):
-    chat_id = message.chat.id
-    step = len(draft_emails.get(chat_id, {}))
-    
-    steps = ["fake_sender", "recipient", "subject", "email_message"]
-    prompts = [
-        "📩 Ahora, ingresa el **correo del destinatario**.",
-        "✏️ Ahora, ingresa el **asunto del correo**.",
-        "📝 Finalmente, ingresa el **mensaje del correo** (puede ser en HTML)."
-    ]
-    
-    if chat_id not in draft_emails:
-        draft_emails[chat_id] = {}
-
-    if step < len(steps):
-        draft_emails[chat_id][steps[step]] = message.text.strip()
-        if step < len(prompts):
-            await message.reply_text(prompts[step])
-    else:
-        email_data = draft_emails.get(chat_id, {})
-        await message.reply_text(
-            f"🧐 **Vista previa:**\n\n"
-            f"📨 De: {email_data['fake_sender']}\n"
-            f"📩 Para: {email_data['recipient']}\n"
-            f"📌 Asunto: {email_data['subject']}\n\n"
-            f"💬 Mensaje:\n{email_data['email_message']}\n\n"
-            f"¿Quieres enviarlo?",
-            reply_markup=InlineKeyboardMarkup([ 
-                [InlineKeyboardButton("✅ Enviar", callback_data="confirm_send_email")], 
-                [InlineKeyboardButton("❌ Cancelar", callback_data="back_to_main")] 
-            ])
-        )
-
-@app.on_callback_query(filters.regex("confirm_send_email"))
-async def confirm_send_email(client, callback_query):
-    chat_id = callback_query.message.chat.id
-    email_data = draft_emails.get(chat_id, {})
-    
-    success = send_email(
-        email_data.get("fake_sender"),
-        email_data.get("recipient"),
-        email_data.get("subject"),
-        email_data.get("email_message")
-    )
-    
-    if success:
-        await callback_query.message.edit_text("✅ **Correo enviado con éxito.**")
-    else:
-        await callback_query.message.edit_text("❌ **Error al enviar el correo.**")
-
-def send_email(sender, recipient, subject, message):
+# Función para realizar email spoofing
+def spoof_email(to_email, subject, body):
     try:
-        msg = MIMEText(message, "html")
-        msg["From"] = sender
-        msg["To"] = recipient
-        msg["Subject"] = subject
-        
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASS)
-            server.sendmail(sender, recipient, msg.as_string())
-        return True
+        # Crear el mensaje del correo
+        message = MIMEMultipart()
+        message['From'] = SENDER_EMAIL
+        message['To'] = to_email
+        message['Subject'] = subject
+
+        # Agregar cuerpo al correo
+        message.attach(MIMEText(body, 'plain'))
+
+        # Establecer conexión con el servidor SMTP y enviar el correo
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()  # Cifra la conexión
+        server.login(SENDER_EMAIL, SENDER_PASSWORD)  # Inicia sesión en el correo
+        text = message.as_string()  # Convierte el mensaje en formato string
+        server.sendmail(SENDER_EMAIL, to_email, text)  # Envía el correo
+        server.quit()  # Cierra la conexión
+        return "Correo enviado exitosamente."
     except Exception as e:
-        print(f"Error al enviar correo: {e}")
-        return False
+        return f"Ocurrió un error al enviar el correo: {e}"
 
-@app.on_callback_query(filters.regex("back_to_main"))
-async def back_to_main(client, callback_query):
-    await callback_query.message.edit_text(
-        "🌟 **Menú Principal**\nSelecciona una categoría:", reply_markup=main_menu()
-    )
+# Comando /spoof para ejecutar el email spoofing
+def spoof(update: Update, context: CallbackContext) -> None:
+    try:
+        # Leer los parámetros del comando: /spoof <to_email> <subject> <body>
+        if len(context.args) < 3:
+            update.message.reply_text("Por favor, usa el formato: /spoof <correo_destino> <asunto> <cuerpo>")
+            return
+        
+        to_email = context.args[0]
+        subject = context.args[1]
+        body = ' '.join(context.args[2:])
+        
+        result = spoof_email(to_email, subject, body)
+        update.message.reply_text(result)
+    except Exception as e:
+        update.message.reply_text(f"Error: {str(e)}")
 
-if __name__ == "__main__":
-    app.run()
+# Función principal que arranca el bot
+def main() -> None:
+    # Crea un Updater con el token de tu bot
+    updater = Updater(BOT_TOKEN)
+
+    # Obtiene el dispatcher para registrar los handlers
+    dispatcher = updater.dispatcher
+
+    # Registro del comando /start y /spoof
+    dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(CommandHandler("spoof", spoof))
+
+    # Empieza el bot
+    updater.start_polling()
+
+    # Mantiene el bot funcionando hasta que se interrumpa con Ctrl+C
+    updater.idle()
+
+if __name__ == '__main__':
+    main()
