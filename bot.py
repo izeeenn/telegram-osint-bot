@@ -80,8 +80,12 @@ async def start(client, message):
 
 @app.on_callback_query(filters.regex("search_user"))
 async def search_user(client, callback_query):
-    await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram.")
-
+    try:
+        if callback_query.message.text != "🔍 Envíame el **nombre de usuario** de Instagram.":
+            await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram.")
+    except Exception as e:
+        print(f"Error editando mensaje: {e}")
+    
     @app.on_message(filters.text & filters.private)
     async def receive_username(client, message):
         username = message.text.strip()
@@ -96,8 +100,12 @@ async def search_user(client, callback_query):
 
 @app.on_callback_query(filters.regex("email_spoof"))
 async def email_spoof(client, callback_query):
-    await callback_query.message.edit_text("📧 Envíame el correo del destinatario.")
-
+    try:
+        if callback_query.message.text != "📧 Envíame el correo del destinatario.":
+            await callback_query.message.edit_text("📧 Envíame el correo del destinatario.")
+    except Exception as e:
+        print(f"Error editando mensaje: {e}")
+    
     @app.on_message(filters.text & filters.private)
     async def receive_email(client, message):
         to_email = message.text.strip()
@@ -130,7 +138,11 @@ async def email_spoof(client, callback_query):
 
 @app.on_callback_query(filters.regex("change_session"))
 async def change_session(client, callback_query):
-    await callback_query.message.edit_text("🔑 Envíame el nuevo SESSION_ID.")
+    try:
+        if callback_query.message.text != "🔑 Envíame el nuevo SESSION_ID.":
+            await callback_query.message.edit_text("🔑 Envíame el nuevo SESSION_ID.")
+    except Exception as e:
+        print(f"Error editando mensaje: {e}")
     
     @app.on_message(filters.text & filters.private)
     async def receive_new_session(client, message):
