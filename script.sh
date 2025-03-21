@@ -34,6 +34,23 @@ sudo debconf-set-selections <<< "postfix postfix/mailname string localhost"
 sudo debconf-set-selections <<< "postfix postfix/main_mailer_type string 'Internet Site'"
 sudo systemctl restart postfix
 
+# Configurar autenticación de SMTP en Postfix
+echo "🔧 Configurando autenticación SMTP..."
+echo "smtp_sasl_auth_enable = yes" | sudo tee -a /etc/postfix/main.cf
+echo "smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd" | sudo tee -a /etc/postfix/main.cf
+echo "smtp_sasl_security_options = noanonymous" | sudo tee -a /etc/postfix/main.cf
+echo "smtp_tls_security_level = may" | sudo tee -a /etc/postfix/main.cf
+echo "smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt" | sudo tee -a /etc/postfix/main.cf
+
+# Crear archivo de contraseñas para autenticación SMTP
+echo "localhost $SMTP_USER:$SMTP_PASSWORD" | sudo tee /etc/postfix/sasl_passwd
+
+# Generar hash de contraseñas para Postfix
+sudo postmap /etc/postfix/sasl_passwd
+
+# Reiniciar Postfix para aplicar configuraciones
+sudo systemctl restart postfix
+
 # Subir cambios a GitHub
 echo "🚀 Subiendo cambios a GitHub..."
 git add .
