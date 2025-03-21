@@ -17,12 +17,6 @@ API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SESSION_ID = os.getenv("SESSION_ID")
 
-# Depuración: Imprimir valores cargados
-print("API_ID:", API_ID)
-print("API_HASH:", API_HASH)
-print("BOT_TOKEN:", BOT_TOKEN)
-print("SESSION_ID:", SESSION_ID)
-
 if not API_ID or not API_HASH or not BOT_TOKEN or not SESSION_ID:
     raise ValueError("Error: Faltan credenciales en las variables de entorno. Verifica tu archivo .env")
 
@@ -31,15 +25,13 @@ API_ID = int(API_ID)  # Convertir API_ID a entero
 # Inicialización del bot
 app = Client("my_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# Función para construir el nuevo menú principal
 def main_menu():
-    botones = [
+    return InlineKeyboardMarkup([
         [InlineKeyboardButton("📌 Instagram", callback_data="menu_instagram")],
-        [InlineKeyboardButton("📌 Tools", callback_data="menu_tools")]
-    ]
-    return InlineKeyboardMarkup(botones)
+        [InlineKeyboardButton("🛠 Tools", callback_data="menu_tools")],
+        [InlineKeyboardButton("ℹ️ Acerca del Bot", callback_data="about_bot")]
+    ])
 
-# Submenús
 def instagram_menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔎 Buscar usuario", callback_data="search_user")],
@@ -53,21 +45,24 @@ def tools_menu():
         [InlineKeyboardButton("🔙 Volver", callback_data="back_to_main")]
     ])
 
-# Comando /start
 @app.on_message(filters.command("start") & filters.private)
 async def start_command(client, message):
-    await message.reply_text("🌟 **Menú Principal**\nSelecciona una categoría:", reply_markup=main_menu())
+    await message.reply_text(
+        "🌟 **Bienvenido al Bot OSINT**\nSelecciona una opción del menú:", reply_markup=main_menu()
+    )
 
-# Callbacks de menú
 @app.on_callback_query(filters.regex("menu_instagram"))
 async def show_instagram_menu(client, callback_query):
-    await callback_query.message.edit_text("📌 **Menú de Instagram**\nSelecciona una opción:", reply_markup=instagram_menu())
+    await callback_query.message.edit_text(
+        "📌 **Menú de Instagram**\nSelecciona una opción:", reply_markup=instagram_menu()
+    )
 
 @app.on_callback_query(filters.regex("menu_tools"))
 async def show_tools_menu(client, callback_query):
-    await callback_query.message.edit_text("📌 **Menú de Tools**\nSelecciona una opción:", reply_markup=tools_menu())
+    await callback_query.message.edit_text(
+        "🛠 **Menú de Tools**\nSelecciona una opción:", reply_markup=tools_menu()
+    )
 
-# Email Spoofing
 draft_emails = {}
 
 @app.on_callback_query(filters.regex("email_spoofing"))
@@ -126,7 +121,6 @@ async def confirm_send_email(client, callback_query):
     else:
         await callback_query.message.edit_text("❌ **Error al enviar el correo.**")
 
-# Función para enviar email con Mailgun
 def send_email(fake_name, fake_sender, recipient, subject, email_message):
     try:
         response = requests.post(
@@ -146,8 +140,9 @@ def send_email(fake_name, fake_sender, recipient, subject, email_message):
 
 @app.on_callback_query(filters.regex("back_to_main"))
 async def back_to_main(client, callback_query):
-    await callback_query.message.edit_text("🌟 **Menú Principal**\nSelecciona una categoría:", reply_markup=main_menu())
+    await callback_query.message.edit_text(
+        "🌟 **Menú Principal**\nSelecciona una categoría:", reply_markup=main_menu()
+    )
 
-# Iniciar el bot
 if __name__ == "__main__":
     app.run()
