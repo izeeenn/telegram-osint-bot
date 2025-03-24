@@ -50,7 +50,7 @@ def obfuscate_number(phone):
 # Enviar correo spoofing
 def send_spoof_email(sender, recipient, subject, message):
     msg = MIMEMultipart()
-    msg["From"] = sender
+    msg["From"] = "mi_correo@dominio.com"  # Dirección personalizada para el remitente
     msg["To"] = recipient
     msg["Subject"] = subject
     msg.attach(MIMEText(message, "plain"))
@@ -100,7 +100,7 @@ app = Client("osintbot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 @app.on_message(filters.command("start"))
 async def start(client, message):
     user_states.pop(message.from_user.id, None)
-    keyboard = InlineKeyboardMarkup([ 
+    keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔍 Instagram", callback_data="instagram")],
         [InlineKeyboardButton("📧 Email Spoofing", callback_data="spoof")],
         [
