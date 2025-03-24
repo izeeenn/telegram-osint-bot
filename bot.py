@@ -24,6 +24,7 @@ SMTP_PORT = 587
 
 STATE_FILE = "session_ids.json"
 user_states = {}
+spoof_inputs = {}
 
 # Cargar sesiones desde disco
 def load_sessions():
@@ -103,7 +104,8 @@ async def start(client, message):
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔍 Instagram", callback_data="instagram")],
         [InlineKeyboardButton("📧 Email Spoofing", callback_data="spoof")],
-        [InlineKeyboardButton("🧪 Cambiar SessionID", callback_data="set_session")]
+        [InlineKeyboardButton("🧪 Cambiar SessionID", callback_data="set_session")],
+        [InlineKeyboardButton("🔎 Ver SessionID", callback_data="view_session"), InlineKeyboardButton("🗑️ Eliminar SessionID", callback_data="delete_session")]
     ])
     await message.reply("Bienvenido, elige una opción:", reply_markup=keyboard)
 
@@ -116,12 +118,30 @@ async def callback_handler(client, callback_query):
     if data == "instagram":
         user_states[user_id] = "instagram"
         await callback_query.message.reply("📸 Escribe el nombre de usuario de Instagram.")
+
     elif data == "spoof":
-        user_states[user_id] = "spoof"
-        await callback_query.message.reply("✉️ Envíame el correo en este formato:\n`remitente|destinatario|asunto|mensaje`", parse_mode="markdown")
+        user_states[user_id] = "spoof_sender"
+        spoof_inputs[user_id] = {}
+        await callback_query.message.reply("✉️ Introduce el correo del remitente:")
+
     elif data == "set_session":
         user_states[user_id] = "set_session"
         await callback_query.message.reply("🔐 Escribe tu nuevo sessionid para Instagram.")
+
+    elif data == "view_session":
+        sessionid = user_sessions.get(str(user_id))
+        if sessionid:
+            await callback_query.message.reply(f"🔎 Tu SessionID actual es:\n`{sessionid}`", parse_mode="markdown")
+        else:
+            await callback_query.message.reply("⚠️ No tienes ningún SessionID guardado.")
+
+    elif data == "delete_session":
+        if str(user_id) in user_sessions:
+            del user_sessions[str(user_id)]
+            save_sessions(user_sessions)
+            await callback_query.message.reply("🗑️ SessionID eliminado correctamente.")
+        else:
+            await callback_query.message.reply("⚠️ No tienes ningún SessionID guardado.")
 
 @app.on_message(filters.text & filters.private)
 async def text_handler(client, message):
@@ -154,12 +174,25 @@ async def text_handler(client, message):
                 await message.reply(info, parse_mode="markdown")
         user_states.pop(user_id)
 
-    elif state == "spoof":
-        parts = text.split("|")
-        if len(parts) != 4:
-            return await message.reply("❌ Formato incorrecto. Usa:\n`remitente|destinatario|asunto|mensaje`", parse_mode="markdown")
-        remitente, destino, asunto, cuerpo = map(str.strip, parts)
-        result = send_spoof_email(remitente, destino, asunto, cuerpo)
+    elif state == "spoof_sender":
+        spoof_inputs[user_id]["sender"] = text
+        user_states[user_id] = "spoof_recipient"
+        await message.reply("📨 Introduce el correo del destinatario:")
+
+    elif state == "spoof_recipient":
+        spoof_inputs[user_id]["recipient"] = text
+        user_states[user_id] = "spoof_subject"
+        await message.reply("📝 Introduce el asunto del correo:")
+
+    elif state == "spoof_subject":
+        spoof_inputs[user_id]["subject"] = text
+        user_states[user_id] = "spoof_message"
+        await message.reply("💬 Introduce el mensaje:")
+
+    elif state == "spoof_message":
+        spoof_inputs[user_id]["message"] = text
+        data = spoof_inputs.pop(user_id)
+        result = send_spoof_email(data["sender"], data["recipient"], data["subject"], data["message"])
         await message.reply(result)
         user_states.pop(user_id)
 
