@@ -129,7 +129,6 @@ async def callback_handler(client, callback_query):
     elif data == "view_session":
         session = user_sessions.get(str(user_id), DEFAULT_SESSION_ID)
         await callback_query.message.reply(f"🔎 Tu sessionid actual:\n`{session}`", parse_mode="markdown")
-`{session}`", parse_mode="markdown")
     elif data == "delete_session":
         if str(user_id) in user_sessions:
             user_sessions.pop(str(user_id))
