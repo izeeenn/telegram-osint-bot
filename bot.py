@@ -13,10 +13,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 API_ID = int(os.getenv("API_ID"))
-API_HASH = os.getenv("API_HASH")
+API_HASH = os.getenv("API_HASH"))
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SMTP_USER = os.getenv("SMTP_USER")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD"))
 
 SMTP_SERVER = "smtp-relay.brevo.com"
 SMTP_PORT = 587
@@ -48,18 +48,30 @@ def obfuscate_number(phone):
     return f"***{phone[-4:]}" if phone and phone[-4:].isdigit() else "No disponible"
 
 # Enviar correo spoofing
-def send_spoof_email(sender, recipient, subject, message):
+def send_spoof_email(sender, recipient, subject, body, reply_to, date, signed_by, security_info):
+    # Crear el mensaje
     msg = MIMEMultipart()
-    msg["From"] = sender
+
+    # Personalizar todas las cabeceras del correo
+    msg["From"] = f"Jan Molina <{sender}>"
     msg["To"] = recipient
     msg["Subject"] = subject
-    msg.attach(MIMEText(message, "plain"))
+    msg.add_header("Reply-To", reply_to)
+    msg.add_header("Date", date)
+    msg.add_header("X-Sender", sender)
+    msg.add_header("X-Mailer", "Python SMTP")
+    msg.add_header("X-Signed-By", signed_by)
+    msg.add_header("X-Security", security_info)
+    
+    # Cuerpo del correo
+    msg.attach(MIMEText(body, "plain"))
 
     try:
+        # Configuración SMTP para enviar el correo
         server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
         server.starttls()
         server.login(SMTP_USER, SMTP_PASSWORD)
-        server.sendmail(sender, recipient, msg.as_string())
+        server.sendmail(sender, recipient, msg.as_string())  # Enviar el correo
         server.quit()
         return "✅ Correo enviado correctamente."
     except Exception as e:
@@ -100,7 +112,7 @@ app = Client("osintbot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 @app.on_message(filters.command("start"))
 async def start(client, message):
     user_states.pop(message.from_user.id, None)
-    keyboard = InlineKeyboardMarkup([
+    keyboard = InlineKeyboardMarkup([ 
         [InlineKeyboardButton("🔍 Instagram", callback_data="instagram")],
         [InlineKeyboardButton("📧 Email Spoofing", callback_data="spoof")],
         [
@@ -182,7 +194,10 @@ async def text_handler(client, message):
         await message.reply("💬 Escribe el mensaje del correo:")
     elif isinstance(state, dict) and state.get("step") == "body":
         state["body"] = text
-        result = send_spoof_email(state["from"], state["to"], state["subject"], state["body"])
+        result = send_spoof_email(
+            state["from"], state["to"], state["subject"], state["body"], 
+            "janmolina27@gmail.com", "24 mar 2025, 11:55", "8961218.brevosend.com", "Cifrado estándar (TLS)"
+        )
         await message.reply(result)
         user_states.pop(user_id)
 
