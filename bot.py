@@ -62,6 +62,9 @@ def send_spoof_email(sender, recipient, subject, message):
 
 # Función para obtener información de Instagram
 def get_instagram_info(username, session_id):
+    if not is_valid_instagram_username(username):
+        return {"error": "Por favor, ingresa un nombre de usuario válido de Instagram."}
+    
     headers = {"User-Agent": "Instagram 101.0.0.15.120", "x-ig-app-id": "936619743392459"}
     cookies = {"sessionid": session_id}
     profile_url = f'https://i.instagram.com/api/v1/users/web_profile_info/?username={username}'
@@ -85,9 +88,13 @@ def get_instagram_info(username, session_id):
     if not user_data:
         return {"error": "No se pudo obtener información del usuario"}
     
+    # Validación y ofuscación del número de teléfono
     phone_number = user_data.get("public_phone_number", "No disponible")
     if phone_number != "No disponible":
-        phone_number = f"***{phone_number[-4:]}"  # Ofuscar el teléfono
+        phone_number = f"***{phone_number[-4:]}"  # Ofuscar el teléfono (últimos 4 dígitos)
+    
+    # Validación del correo electrónico
+    email = user_data.get("public_email", "No disponible")
     
     profile_picture = user_data.get("profile_pic_url_hd", "No disponible")
     if profile_picture == "No disponible":
@@ -101,37 +108,25 @@ def get_instagram_info(username, session_id):
         "is_private": user_data.get("is_private", False),
         "bio": user_data.get("biography", "No disponible"),
         "profile_picture": profile_picture,
-        "email": user_data.get("public_email", "No disponible"),
+        "email": email,
         "phone": phone_number,
     }
 
-# Función para crear menús interactivos
-def main_menu():
-    buttons = [
-        [InlineKeyboardButton("🔍 Buscar usuario de Instagram", callback_data="search_user")],
-        [InlineKeyboardButton("📧 Email Spoofing", callback_data="email_spoofing")],
-        [InlineKeyboardButton("🔑 Cambiar SESSION_ID", callback_data="change_session")]
-    ]
-    return InlineKeyboardMarkup(buttons)
-
-# Manejadores de mensajes y botones
-@app.on_message(filters.command("start"))
-async def start(client, message):
-    await message.reply_text(
-        f"🌟 **SESSION_ID actual:** `{SESSION_ID}`\n\n"
-        "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
-        reply_markup=main_menu()
-    )
-
-# Opción de buscar usuario de Instagram
-@app.on_callback_query(filters.regex("search_user"))
-async def search_user(client, callback_query):
-    await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram que quieres buscar.")
+# Función para validar que el nombre de usuario de Instagram sea válido
+def is_valid_instagram_username(username):
+    pattern = r'^[a-zA-Z0-9_.]+$'  # Solo letras, números, guiones bajos y puntos
+    return re.match(pattern, username) is not None
 
 # Recibe el nombre de usuario de Instagram
 @app.on_message(filters.text & filters.private)
 async def receive_username(client, message):
     username = message.text.strip()
+    
+    # Validar que sea un nombre de usuario válido
+    if not is_valid_instagram_username(username):
+        await message.reply_text("❌ Por favor, ingresa un nombre de usuario de Instagram válido.")
+        return
+    
     await message.reply_text("🔍 Buscando información, espera un momento...")
     data = get_instagram_info(username, SESSION_ID)
     if "error" in data:
@@ -148,14 +143,6 @@ async def receive_username(client, message):
             f"📞 **Teléfono (ofuscado):** {data['phone']}\n"
         )
         await message.reply_photo(photo=data['profile_picture'], caption=info_msg)
-
-# Flujo de email spoofing
-@app.on_callback_query(filters.regex("email_spoofing"))
-async def email_spoofing_menu(client, callback_query):
-    await callback_query.message.edit_text("📧 Envíame el **correo del remitente falso**.")
-
-# Manejadores para el flujo de email spoofing (agregar validación y cambios de estado)
-# Aquí podrías usar un diccionario para almacenar el estado de los usuarios
 
 if __name__ == "__main__":
     app.run()
