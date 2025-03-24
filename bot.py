@@ -90,54 +90,43 @@ async def start(client, message):
 
 @app.on_callback_query(filters.regex("search_user"))
 async def search_user(client, callback_query):
-    chat_id = callback_query.message.chat.id
     await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram que quieres buscar.")
-    
-    @app.on_message(filters.text & filters.private)
-    async def receive_username(client, message):
-        if message.chat.id == chat_id:
-            username = message.text.strip()
-            await message.reply_text("🔍 Buscando información, espera un momento...")
-            data = get_instagram_info(username, SESSION_ID)
-            if "error" in data:
-                await message.reply_text(f"❌ Error: {data['error']}")
-            else:
-                info_msg = (
-                    f"📌 **Usuario:** {data['username']}\n"
-                    f"📛 **Nombre:** {data['full_name']}\n"
-                    f"🆔 **ID:** {data['user_id']}\n"
-                    f"👥 **Seguidores:** {data['followers']}\n"
-                    f"🔒 **Cuenta privada:** {'Sí' if data['is_private'] else 'No'}\n"
-                    f"📝 **Bio:** {data['bio']}\n"
-                    f"📧 **Correo:** {data['email']}\n"
-                    f"📞 **Teléfono:** {data['phone']}\n"
-                )
-                await message.reply_photo(photo=data['profile_picture'], caption=info_msg)
+
+@app.on_message(filters.text & filters.private)
+async def receive_username(client, message):
+    username = message.text.strip()
+    await message.reply_text("🔍 Buscando información, espera un momento...")
+    data = get_instagram_info(username, SESSION_ID)
+    if "error" in data:
+        await message.reply_text(f"❌ Error: {data['error']}")
+    else:
+        info_msg = (
+            f"📌 **Usuario:** {data['username']}\n"
+            f"📛 **Nombre:** {data['full_name']}\n"
+            f"🆔 **ID:** {data['user_id']}\n"
+            f"👥 **Seguidores:** {data['followers']}\n"
+            f"🔒 **Cuenta privada:** {'Sí' if data['is_private'] else 'No'}\n"
+            f"📝 **Bio:** {data['bio']}\n"
+            f"📧 **Correo:** {data['email']}\n"
+            f"📞 **Teléfono:** {data['phone']}\n"
+        )
+        await message.reply_photo(photo=data['profile_picture'], caption=info_msg)
 
 @app.on_callback_query(filters.regex("email_spoofing"))
 async def email_spoofing_menu(client, callback_query):
     await callback_query.message.edit_text("📧 Envíame el **correo del remitente falso**.")
-    
-    @app.on_message(filters.text & filters.private)
-    async def get_sender(client, message):
-        sender = message.text.strip()
-        await message.reply_text("📨 Envíame el **correo del destinatario**.")
-        
-        @app.on_message(filters.text & filters.private)
-        async def get_recipient(client, message):
-            recipient = message.text.strip()
-            await message.reply_text("✉️ Envíame el **asunto del correo**.")
-            
-            @app.on_message(filters.text & filters.private)
-            async def get_subject(client, message):
-                subject = message.text.strip()
-                await message.reply_text("📝 Envíame el **contenido del correo**.")
-                
-                @app.on_message(filters.text & filters.private)
-                async def get_content(client, message):
-                    content = message.text.strip()
-                    response = send_spoof_email(sender, recipient, subject, content)
-                    await message.reply_text(response)
+
+@app.on_message(filters.text & filters.private)
+async def email_spoofing_flow(client, message):
+    sender = message.text.strip()
+    await message.reply_text("📨 Envíame el **correo del destinatario**.")
+    recipient = await client.listen(message.chat.id)
+    await message.reply_text("✉️ Envíame el **asunto del correo**.")
+    subject = await client.listen(message.chat.id)
+    await message.reply_text("📝 Envíame el **contenido del correo**.")
+    content = await client.listen(message.chat.id)
+    response = send_spoof_email(sender, recipient.text.strip(), subject.text.strip(), content.text.strip())
+    await message.reply_text(response)
 
 if __name__ == "__main__":
     app.run()
