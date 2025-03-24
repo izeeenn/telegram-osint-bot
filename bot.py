@@ -50,21 +50,23 @@ def obfuscate_number(phone):
 # Enviar correo spoofing
 def send_spoof_email(sender, recipient, subject, message):
     msg = MIMEMultipart()
-    msg["From"] = SMTP_USER  # Usar el mismo correo de autenticación como remitente
+    msg["From"] = sender
     msg["To"] = recipient
     msg["Subject"] = subject
-    msg["Reply-To"] = sender  # Si quieres que las respuestas se vayan al sender
-    msg["Return-Path"] = sender  # Asegúrate de que las respuestas se gestionen correctamente
     msg.attach(MIMEText(message, "plain"))
 
     try:
         server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-        server.starttls()
+        server.starttls()  # Inicia TLS
+        print("Conexión TLS iniciada.")
         server.login(SMTP_USER, SMTP_PASSWORD)
-        server.sendmail(SMTP_USER, recipient, msg.as_string())  # Usar SMTP_USER para el envío
+        print("Login exitoso.")
+        server.sendmail(sender, recipient, msg.as_string())
+        print("Correo enviado exitosamente.")
         server.quit()
         return "✅ Correo enviado correctamente."
     except Exception as e:
+        print(f"Error al enviar el correo: {str(e)}")
         return f"❌ Error al enviar el correo: {str(e)}"
 
 # Obtener datos de Instagram
@@ -102,13 +104,11 @@ app = Client("osintbot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 @app.on_message(filters.command("start"))
 async def start(client, message):
     user_states.pop(message.from_user.id, None)
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔍 Instagram", callback_data="instagram")],
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🔍 Instagram", callback_data="instagram")],
         [InlineKeyboardButton("📧 Email Spoofing", callback_data="spoof")],
-        [
-            InlineKeyboardButton("🧪 Cambiar SessionID", callback_data="set_session"),
-            InlineKeyboardButton("🔎 Ver SessionID", callback_data="view_session")
-        ],
+        [InlineKeyboardButton("🧪 Cambiar SessionID", callback_data="set_session"),
+         InlineKeyboardButton("🔎 Ver SessionID", callback_data="view_session")],
         [InlineKeyboardButton("🗑️ Eliminar SessionID", callback_data="delete_session")]
     ])
     await message.reply("Bienvenido, elige una opción:", reply_markup=keyboard)
