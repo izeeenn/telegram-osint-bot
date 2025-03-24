@@ -105,7 +105,7 @@ def get_instagram_info(username, session_id):
         "phone": phone_number,
     }
 
-# Creación de los botones visuales
+# Función para crear menús interactivos
 def main_menu():
     buttons = [
         [InlineKeyboardButton("🔍 Buscar usuario de Instagram", callback_data="search_user")],
@@ -114,21 +114,7 @@ def main_menu():
     ]
     return InlineKeyboardMarkup(buttons)
 
-def instagram_menu():
-    buttons = [
-        [InlineKeyboardButton("🔍 Buscar usuario de Instagram", callback_data="search_user")],
-        [InlineKeyboardButton("🔙 Volver al menú principal", callback_data="back_to_main")]
-    ]
-    return InlineKeyboardMarkup(buttons)
-
-def spoofing_menu():
-    buttons = [
-        [InlineKeyboardButton("📧 Enviar un correo falso", callback_data="send_spoof_email")],
-        [InlineKeyboardButton("🔙 Volver al menú principal", callback_data="back_to_main")]
-    ]
-    return InlineKeyboardMarkup(buttons)
-
-# Menú de inicio
+# Manejadores de mensajes y botones
 @app.on_message(filters.command("start"))
 async def start(client, message):
     await message.reply_text(
@@ -163,51 +149,13 @@ async def receive_username(client, message):
         )
         await message.reply_photo(photo=data['profile_picture'], caption=info_msg)
 
-# Opción de email spoofing
+# Flujo de email spoofing
 @app.on_callback_query(filters.regex("email_spoofing"))
 async def email_spoofing_menu(client, callback_query):
-    await callback_query.message.edit_text("📧 Envíame el **correo del remitente falso**.", reply_markup=spoofing_menu())
+    await callback_query.message.edit_text("📧 Envíame el **correo del remitente falso**.")
 
-# Flujo de email spoofing
-EMAIL_SPOOFING, EMAIL_RECIPIENT, EMAIL_SUBJECT, EMAIL_CONTENT = range(4)
-
-@app.on_message(filters.text & filters.private)
-async def email_spoofing_flow(client, message):
-    user_state = {}  # Diccionario para almacenar los estados de los usuarios
-    state = user_state.get(message.chat.id, None)
-
-    if "@" not in message.text:
-        await message.reply_text("❌ Por favor, ingresa un correo válido.")
-        return
-    
-    if state == EMAIL_SPOOFING:
-        sender = message.text.strip()
-        await message.reply_text("📨 Envíame el **correo del destinatario**.")
-        user_state[message.chat.id] = EMAIL_RECIPIENT
-
-    elif state == EMAIL_RECIPIENT:
-        recipient = message.text.strip()
-        await message.reply_text("✉️ Envíame el **asunto del correo**.")
-        user_state[message.chat.id] = EMAIL_SUBJECT
-
-    elif state == EMAIL_SUBJECT:
-        subject = message.text.strip()
-        await message.reply_text("📝 Envíame el **contenido del correo**.")
-        user_state[message.chat.id] = EMAIL_CONTENT
-
-    elif state == EMAIL_CONTENT:
-        content = message.text.strip()
-        response = send_spoof_email(sender, recipient, subject, content)
-        await message.reply_text(response)
-        user_state[message.chat.id] = EMAIL_SPOOFING
-
-# Opción de volver al menú principal
-@app.on_callback_query(filters.regex("back_to_main"))
-async def back_to_main(client, callback_query):
-    await callback_query.message.edit_text(
-        "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
-        reply_markup=main_menu()
-    )
+# Manejadores para el flujo de email spoofing (agregar validación y cambios de estado)
+# Aquí podrías usar un diccionario para almacenar el estado de los usuarios
 
 if __name__ == "__main__":
     app.run()
