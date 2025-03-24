@@ -15,16 +15,15 @@ load_dotenv()
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-SESSION_ID = os.getenv("SESSION_ID")
 SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
 SMTP_SERVER = "smtp-relay.brevo.com"
 SMTP_PORT = 587
 
+DEFAULT_SESSION_ID = "71901593608%3Am1xRMM21dKOpV7%3A1%3AAYeufS7hJnkrlZ0gEfhb2jaauxW_NV8Av2jYoRCk3g"
 STATE_FILE = "session_ids.json"
 user_states = {}
-spoof_inputs = {}
 
 # Cargar sesiones desde disco
 def load_sessions():
@@ -68,7 +67,7 @@ def send_spoof_email(sender, recipient, subject, message):
 
 # Obtener datos de Instagram
 def get_instagram_info(username, sessionid, user_id=None):
-    cookies = {"sessionid": user_sessions.get(str(user_id), sessionid)}
+    cookies = {"sessionid": user_sessions.get(str(user_id), DEFAULT_SESSION_ID)}
     headers = {
         "User-Agent": "Mozilla/5.0",
         "x-ig-app-id": "936619743392459"
@@ -104,8 +103,11 @@ async def start(client, message):
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔍 Instagram", callback_data="instagram")],
         [InlineKeyboardButton("📧 Email Spoofing", callback_data="spoof")],
-        [InlineKeyboardButton("🧪 Cambiar SessionID", callback_data="set_session")],
-        [InlineKeyboardButton("🔎 Ver SessionID", callback_data="view_session"), InlineKeyboardButton("🗑️ Eliminar SessionID", callback_data="delete_session")]
+        [
+            InlineKeyboardButton("🧪 Cambiar SessionID", callback_data="set_session"),
+            InlineKeyboardButton("🔎 Ver SessionID", callback_data="view_session")
+        ],
+        [InlineKeyboardButton("🗑️ Eliminar SessionID", callback_data="delete_session")]
     ])
     await message.reply("Bienvenido, elige una opción:", reply_markup=keyboard)
 
@@ -118,30 +120,23 @@ async def callback_handler(client, callback_query):
     if data == "instagram":
         user_states[user_id] = "instagram"
         await callback_query.message.reply("📸 Escribe el nombre de usuario de Instagram.")
-
     elif data == "spoof":
-        user_states[user_id] = "spoof_sender"
-        spoof_inputs[user_id] = {}
-        await callback_query.message.reply("✉️ Introduce el correo del remitente:")
-
+        user_states[user_id] = {"step": "from"}
+        await callback_query.message.reply("✉️ ¿Quién será el remitente?")
     elif data == "set_session":
         user_states[user_id] = "set_session"
         await callback_query.message.reply("🔐 Escribe tu nuevo sessionid para Instagram.")
-
     elif data == "view_session":
-        sessionid = user_sessions.get(str(user_id))
-        if sessionid:
-            await callback_query.message.reply(f"🔎 Tu SessionID actual es:\n`{sessionid}`", parse_mode="markdown")
-        else:
-            await callback_query.message.reply("⚠️ No tienes ningún SessionID guardado.")
-
+        session = user_sessions.get(str(user_id), DEFAULT_SESSION_ID)
+        await callback_query.message.reply(f"🔎 Tu sessionid actual:
+`{session}`", parse_mode="markdown")
     elif data == "delete_session":
         if str(user_id) in user_sessions:
-            del user_sessions[str(user_id)]
+            user_sessions.pop(str(user_id))
             save_sessions(user_sessions)
-            await callback_query.message.reply("🗑️ SessionID eliminado correctamente.")
+            await callback_query.message.reply("🗑️ Tu sessionid ha sido eliminado.")
         else:
-            await callback_query.message.reply("⚠️ No tienes ningún SessionID guardado.")
+            await callback_query.message.reply("⚠️ No tienes un sessionid personalizado guardado.")
 
 @app.on_message(filters.text & filters.private)
 async def text_handler(client, message):
@@ -154,7 +149,7 @@ async def text_handler(client, message):
 
     if state == "instagram":
         await message.reply("🔍 Buscando información...")
-        data = get_instagram_info(text, SESSION_ID, user_id)
+        data = get_instagram_info(text, DEFAULT_SESSION_ID, user_id)
         if "error" in data:
             await message.reply(data["error"])
         else:
@@ -174,25 +169,21 @@ async def text_handler(client, message):
                 await message.reply(info, parse_mode="markdown")
         user_states.pop(user_id)
 
-    elif state == "spoof_sender":
-        spoof_inputs[user_id]["sender"] = text
-        user_states[user_id] = "spoof_recipient"
-        await message.reply("📨 Introduce el correo del destinatario:")
-
-    elif state == "spoof_recipient":
-        spoof_inputs[user_id]["recipient"] = text
-        user_states[user_id] = "spoof_subject"
-        await message.reply("📝 Introduce el asunto del correo:")
-
-    elif state == "spoof_subject":
-        spoof_inputs[user_id]["subject"] = text
-        user_states[user_id] = "spoof_message"
-        await message.reply("💬 Introduce el mensaje:")
-
-    elif state == "spoof_message":
-        spoof_inputs[user_id]["message"] = text
-        data = spoof_inputs.pop(user_id)
-        result = send_spoof_email(data["sender"], data["recipient"], data["subject"], data["message"])
+    elif isinstance(state, dict) and state.get("step") == "from":
+        state["from"] = text
+        state["step"] = "to"
+        await message.reply("✉️ ¿Quién será el destinatario?")
+    elif isinstance(state, dict) and state.get("step") == "to":
+        state["to"] = text
+        state["step"] = "subject"
+        await message.reply("📝 ¿Cuál es el asunto?")
+    elif isinstance(state, dict) and state.get("step") == "subject":
+        state["subject"] = text
+        state["step"] = "body"
+        await message.reply("💬 Escribe el mensaje del correo:")
+    elif isinstance(state, dict) and state.get("step") == "body":
+        state["body"] = text
+        result = send_spoof_email(state["from"], state["to"], state["subject"], state["body"])
         await message.reply(result)
         user_states.pop(user_id)
 
