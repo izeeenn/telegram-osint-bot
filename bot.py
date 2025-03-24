@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 import smtplib
 from email.mime.text import MIMEText
@@ -10,15 +11,24 @@ from dotenv import load_dotenv
 # Cargar variables de entorno
 load_dotenv()
 
-API_ID = int(os.getenv("API_ID"))
+# Validar que las variables necesarias están presentes
+API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SESSION_ID = os.getenv("SESSION_ID")
+SMTP_USER = os.getenv("SMTP_USER")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+
+if not all([API_ID, API_HASH, BOT_TOKEN, SESSION_ID, SMTP_USER, SMTP_PASSWORD]):
+    raise ValueError("Faltan variables de entorno críticas. Asegúrate de tener todas las variables necesarias en .env")
 
 SMTP_SERVER = "smtp-relay.brevo.com"
 SMTP_PORT = 587
-SMTP_USER = "88bcc2001@smtp-brevo.com"
-SMTP_PASSWORD = "crKS0UxsOjRzFAGJ"
+
+# Validación de correo electrónico
+def validate_email(email):
+    pattern = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
+    return re.match(pattern, email) is not None
 
 # Configuración del bot
 app = Client(
@@ -28,6 +38,7 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
+# Función para enviar correos
 def send_spoof_email(sender, recipient, subject, message):
     msg = MIMEMultipart()
     msg["From"] = sender
@@ -42,17 +53,33 @@ def send_spoof_email(sender, recipient, subject, message):
         server.sendmail(sender, recipient, msg.as_string())
         server.quit()
         return "✅ Correo enviado exitosamente."
+    except smtplib.SMTPAuthenticationError:
+        return "❌ Error de autenticación. Verifica tus credenciales SMTP."
+    except smtplib.SMTPConnectError:
+        return "❌ Error al conectar al servidor SMTP."
     except Exception as e:
-        return f"❌ Error al enviar el correo: {str(e)}"
+        return f"❌ Error desconocido al enviar el correo: {str(e)}"
 
+# Función para obtener información de Instagram
 def get_instagram_info(username, session_id):
     headers = {"User-Agent": "Instagram 101.0.0.15.120", "x-ig-app-id": "936619743392459"}
     cookies = {"sessionid": session_id}
     profile_url = f'https://i.instagram.com/api/v1/users/web_profile_info/?username={username}'
-    response = requests.get(profile_url, headers=headers, cookies=cookies)
-    
+
+    try:
+        response = requests.get(profile_url, headers=headers, cookies=cookies)
+        response.raise_for_status()  # Lanza un error si el código de estado no es 2xx
+    except requests.exceptions.RequestException as e:
+        return {"error": f"Error al acceder al perfil: {str(e)}"}
+
     if response.status_code == 404:
         return {"error": "Usuario no encontrado"}
+    
+    if response.status_code != 200:
+        return {"error": f"Error al acceder al perfil. Código de estado: {response.status_code}"}
+    
+    if 'application/json' not in response.headers['Content-Type']:
+        return {"error": "Respuesta no válida de la API"}
     
     user_data = response.json().get("data", {}).get("user", {})
     if not user_data:
@@ -60,7 +87,11 @@ def get_instagram_info(username, session_id):
     
     phone_number = user_data.get("public_phone_number", "No disponible")
     if phone_number != "No disponible":
-        phone_number = f"***{phone_number[-4:]}"  # Ocultar los primeros 7 dígitos del número
+        phone_number = f"***{phone_number[-4:]}"  # Ofuscar el teléfono
+    
+    profile_picture = user_data.get("profile_pic_url_hd", "No disponible")
+    if profile_picture == "No disponible":
+        profile_picture = "https://example.com/default-profile-pic.jpg"  # Imagen predeterminada si no está disponible
     
     return {
         "username": user_data.get("username", "No disponible"),
@@ -69,19 +100,35 @@ def get_instagram_info(username, session_id):
         "followers": user_data.get("edge_followed_by", {}).get("count", "No disponible"),
         "is_private": user_data.get("is_private", False),
         "bio": user_data.get("biography", "No disponible"),
-        "profile_picture": user_data.get("profile_pic_url_hd", "No disponible"),
+        "profile_picture": profile_picture,
         "email": user_data.get("public_email", "No disponible"),
         "phone": phone_number,
     }
 
+# Creación de los botones visuales
 def main_menu():
-    botones = [
-        [InlineKeyboardButton("🔎 Buscar usuario de Instagram", callback_data="search_user")],
+    buttons = [
+        [InlineKeyboardButton("🔍 Buscar usuario de Instagram", callback_data="search_user")],
         [InlineKeyboardButton("📧 Email Spoofing", callback_data="email_spoofing")],
         [InlineKeyboardButton("🔑 Cambiar SESSION_ID", callback_data="change_session")]
     ]
-    return InlineKeyboardMarkup(botones)
+    return InlineKeyboardMarkup(buttons)
 
+def instagram_menu():
+    buttons = [
+        [InlineKeyboardButton("🔍 Buscar usuario de Instagram", callback_data="search_user")],
+        [InlineKeyboardButton("🔙 Volver al menú principal", callback_data="back_to_main")]
+    ]
+    return InlineKeyboardMarkup(buttons)
+
+def spoofing_menu():
+    buttons = [
+        [InlineKeyboardButton("📧 Enviar un correo falso", callback_data="send_spoof_email")],
+        [InlineKeyboardButton("🔙 Volver al menú principal", callback_data="back_to_main")]
+    ]
+    return InlineKeyboardMarkup(buttons)
+
+# Menú de inicio
 @app.on_message(filters.command("start"))
 async def start(client, message):
     await message.reply_text(
@@ -90,10 +137,12 @@ async def start(client, message):
         reply_markup=main_menu()
     )
 
+# Opción de buscar usuario de Instagram
 @app.on_callback_query(filters.regex("search_user"))
 async def search_user(client, callback_query):
     await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram que quieres buscar.")
 
+# Recibe el nombre de usuario de Instagram
 @app.on_message(filters.text & filters.private)
 async def receive_username(client, message):
     username = message.text.strip()
@@ -110,27 +159,55 @@ async def receive_username(client, message):
             f"🔒 **Cuenta privada:** {'Sí' if data['is_private'] else 'No'}\n"
             f"📝 **Bio:** {data['bio']}\n"
             f"📧 **Correo:** {data['email']}\n"
-            f"📞 **Teléfono:** {data['phone']}\n"
+            f"📞 **Teléfono (ofuscado):** {data['phone']}\n"
         )
         await message.reply_photo(photo=data['profile_picture'], caption=info_msg)
 
+# Opción de email spoofing
 @app.on_callback_query(filters.regex("email_spoofing"))
 async def email_spoofing_menu(client, callback_query):
-    await callback_query.message.edit_text("📧 Envíame el **correo del remitente falso**.")
+    await callback_query.message.edit_text("📧 Envíame el **correo del remitente falso**.", reply_markup=spoofing_menu())
+
+# Flujo de email spoofing
+EMAIL_SPOOFING, EMAIL_RECIPIENT, EMAIL_SUBJECT, EMAIL_CONTENT = range(4)
 
 @app.on_message(filters.text & filters.private)
 async def email_spoofing_flow(client, message):
-    sender = message.text.strip()
-    await message.reply_text("📨 Envíame el **correo del destinatario**.")
-    recipient = await client.listen(message.chat.id)
-    await message.reply_text("✉️ Envíame el **asunto del correo**.")
-    subject = await client.listen(message.chat.id)
-    await message.reply_text("📝 Envíame el **contenido del correo**.")
-    content = await client.listen(message.chat.id)
+    user_state = {}  # Diccionario para almacenar los estados de los usuarios
+    state = user_state.get(message.chat.id, None)
+
+    if "@" not in message.text:
+        await message.reply_text("❌ Por favor, ingresa un correo válido.")
+        return
     
-    # Send the spoofed email
-    response = send_spoof_email(sender, recipient.text.strip(), subject.text.strip(), content.text.strip())
-    await message.reply_text(response)
+    if state == EMAIL_SPOOFING:
+        sender = message.text.strip()
+        await message.reply_text("📨 Envíame el **correo del destinatario**.")
+        user_state[message.chat.id] = EMAIL_RECIPIENT
+
+    elif state == EMAIL_RECIPIENT:
+        recipient = message.text.strip()
+        await message.reply_text("✉️ Envíame el **asunto del correo**.")
+        user_state[message.chat.id] = EMAIL_SUBJECT
+
+    elif state == EMAIL_SUBJECT:
+        subject = message.text.strip()
+        await message.reply_text("📝 Envíame el **contenido del correo**.")
+        user_state[message.chat.id] = EMAIL_CONTENT
+
+    elif state == EMAIL_CONTENT:
+        content = message.text.strip()
+        response = send_spoof_email(sender, recipient, subject, content)
+        await message.reply_text(response)
+        user_state[message.chat.id] = EMAIL_SPOOFING
+
+# Opción de volver al menú principal
+@app.on_callback_query(filters.regex("back_to_main"))
+async def back_to_main(client, callback_query):
+    await callback_query.message.edit_text(
+        "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
+        reply_markup=main_menu()
+    )
 
 if __name__ == "__main__":
     app.run()
