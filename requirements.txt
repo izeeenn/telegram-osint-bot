@@ -1,7 +1,8 @@
 pyrogram
-requests
 tgcrypto
 python-dotenv
+requests
 phonenumbers
 pycountry
-beautifulsoup4
+smtplib
+email
