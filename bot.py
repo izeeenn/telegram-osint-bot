@@ -60,6 +60,10 @@ def get_instagram_info(username, session_id):
     if not user_data:
         return {"error": "No se pudo obtener información del usuario"}
     
+    phone_number = user_data.get("contact_phone_number", "No disponible")
+    if phone_number and phone_number != "No disponible":
+        phone_number = phone_number[:3] + "****" + phone_number[-4:]
+    
     return {
         "username": user_data.get("username", "No disponible"),
         "full_name": user_data.get("full_name", "No disponible"),
@@ -69,7 +73,7 @@ def get_instagram_info(username, session_id):
         "bio": user_data.get("biography", "No disponible"),
         "profile_picture": user_data.get("profile_pic_url_hd", "No disponible"),
         "email": user_data.get("public_email", "No disponible"),
-        "phone": user_data.get("public_phone_number", "No disponible"),
+        "phone": phone_number,
     }
 
 def main_menu():
