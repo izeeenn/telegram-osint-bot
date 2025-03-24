@@ -1,10 +1,8 @@
 import os
 import requests
-import json
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from urllib.parse import quote_plus
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
@@ -60,9 +58,9 @@ def get_instagram_info(username, session_id):
     if not user_data:
         return {"error": "No se pudo obtener información del usuario"}
     
-    phone_number = user_data.get("contact_phone_number", "No disponible")
-    if phone_number and phone_number != "No disponible":
-        phone_number = phone_number[:3] + "****" + phone_number[-4:]
+    phone_number = user_data.get("public_phone_number", "No disponible")
+    if phone_number != "No disponible":
+        phone_number = f"***{phone_number[-4:]}"  # Ocultar los primeros 7 dígitos del número
     
     return {
         "username": user_data.get("username", "No disponible"),
@@ -129,6 +127,8 @@ async def email_spoofing_flow(client, message):
     subject = await client.listen(message.chat.id)
     await message.reply_text("📝 Envíame el **contenido del correo**.")
     content = await client.listen(message.chat.id)
+    
+    # Send the spoofed email
     response = send_spoof_email(sender, recipient.text.strip(), subject.text.strip(), content.text.strip())
     await message.reply_text(response)
 
