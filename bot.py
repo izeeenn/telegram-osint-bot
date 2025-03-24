@@ -8,37 +8,31 @@ from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
 
-# Cargar variables de entorno
+# Cargar .env
 load_dotenv()
 
-# Cargar configuración
-API_ID = os.getenv("API_ID")
+API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SESSION_ID = os.getenv("SESSION_ID")
 SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
-if not all([API_ID, API_HASH, BOT_TOKEN, SESSION_ID, SMTP_USER, SMTP_PASSWORD]):
-    raise ValueError("Faltan variables de entorno. Revisa tu archivo .env")
-
-SMTP_SERVER = "smtp-relay.brevo.com"  # Puedes cambiarlo si usas otro proveedor
+SMTP_SERVER = "smtp-relay.brevo.com"
 SMTP_PORT = 587
 
-# Diccionarios para manejar estados y sesiones temporales por usuario
 user_states = {}
 user_sessions = {}
 
-# Validar correos electrónicos
+# Validador de email
 def validate_email(email):
-    pattern = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
-    return re.match(pattern, email) is not None
+    return re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', email) is not None
 
-# Validar nombre de usuario de Instagram
-def is_valid_instagram_username(username):
-    return re.match(r'^[a-zA-Z0-9_.]+$', username) is not None
+# Formateo de número con ofuscado
+def obfuscate_number(phone):
+    return f"***{phone[-4:]}" if phone and phone[-4:].isdigit() else "No disponible"
 
-# Función para enviar correos con spoofing
+# Enviar email spoofing
 def send_spoof_email(sender, recipient, subject, message):
     msg = MIMEMultipart()
     msg["From"] = sender
@@ -53,142 +47,129 @@ def send_spoof_email(sender, recipient, subject, message):
         server.sendmail(sender, recipient, msg.as_string())
         server.quit()
         return "✅ Correo enviado correctamente."
-    except smtplib.SMTPAuthenticationError:
-        return "❌ Error de autenticación SMTP."
-    except smtplib.SMTPConnectError:
-        return "❌ Error de conexión con el servidor SMTP."
     except Exception as e:
         return f"❌ Error al enviar el correo: {str(e)}"
 
-# Función para obtener información pública de Instagram
-def get_instagram_info(username, default_session_id, user_id=None):
-    session_id = user_sessions.get(user_id, default_session_id)
-
-    if not is_valid_instagram_username(username):
-        return {"error": "Nombre de usuario no válido."}
-
+# Extraer info de Instagram
+def get_instagram_info(username, sessionid, user_id=None):
     headers = {
-        "User-Agent": "Instagram 101.0.0.15.120",
+        "User-Agent": "Mozilla/5.0",
         "x-ig-app-id": "936619743392459"
     }
-    cookies = {"sessionid": session_id}
-    profile_url = f'https://i.instagram.com/api/v1/users/web_profile_info/?username={username}'
-
-    try:
-        response = requests.get(profile_url, headers=headers, cookies=cookies)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        return {"error": f"Error al acceder al perfil: {str(e)}"}
-
-    if response.status_code == 404:
-        return {"error": "Usuario no encontrado"}
-
-    if 'application/json' not in response.headers.get('Content-Type', ''):
-        return {"error": "Respuesta inválida de la API"}
-
-    user_data = response.json().get("data", {}).get("user", {})
-    if not user_data:
-        return {"error": "No se pudo obtener información del usuario"}
-
-    # Datos públicos únicamente
-    profile_picture = user_data.get("profile_pic_url_hd", "https://example.com/default.jpg")
-    phone_number = user_data.get("public_phone_number", "No disponible")
-    email = user_data.get("public_email", "No disponible")
-
-    if phone_number != "No disponible":
-        phone_number = f"***{phone_number[-4:]}"  # Ofuscar
-
-    return {
-        "username": user_data.get("username", "No disponible"),
-        "full_name": user_data.get("full_name", "No disponible"),
-        "user_id": user_data.get("id", "Desconocido"),
-        "followers": user_data.get("edge_followed_by", {}).get("count", "No disponible"),
-        "is_private": user_data.get("is_private", False),
-        "bio": user_data.get("biography", "No disponible"),
-        "profile_picture": profile_picture,
-        "email": email,
-        "phone": phone_number,
+    cookies = {
+        "sessionid": user_sessions.get(user_id, sessionid)
     }
 
-# Iniciar el bot
-app = Client("osint_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+    url = f"https://i.instagram.com/api/v1/users/web_profile_info/?username={username}"
+    try:
+        r = requests.get(url, headers=headers, cookies=cookies)
+        r.raise_for_status()
+    except Exception as e:
+        return {"error": f"❌ Error al obtener datos: {e}"}
 
-# Comando /start con menú
-@app.on_message(filters.command("start") & filters.private)
+    data = r.json().get("data", {}).get("user", {})
+    if not data:
+        return {"error": "❌ Usuario no encontrado o perfil privado."}
+
+    # Extracción segura
+    return {
+        "username": data.get("username", "N/A"),
+        "full_name": data.get("full_name", "N/A"),
+        "user_id": data.get("id", "N/A"),
+        "followers": data.get("edge_followed_by", {}).get("count", "N/A"),
+        "is_private": data.get("is_private", False),
+        "bio": data.get("biography", "N/A"),
+        "email": data.get("public_email", "No disponible"),
+        "phone": obfuscate_number(data.get("public_phone_number", "")),
+        "pfp": data.get("profile_pic_url_hd", None),
+    }
+
+# Iniciar bot
+app = Client("osintbot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+
+# /start con botones
+@app.on_message(filters.command("start"))
 async def start(client, message):
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔍 Buscar en Instagram", callback_data="instagram")],
-        [InlineKeyboardButton("📧 Enviar Email Spoofing", callback_data="spoof")],
-        [InlineKeyboardButton("🧪 Cambiar sessionid", callback_data="set_session")]
-    ])
-    await message.reply("Selecciona una opción:", reply_markup=keyboard)
+    user_states.pop(message.from_user.id, None)
 
-# Botón pulsado
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔍 Instagram", callback_data="instagram")],
+        [InlineKeyboardButton("📧 Email Spoofing", callback_data="spoof")],
+        [InlineKeyboardButton("🧪 Cambiar SessionID", callback_data="set_session")]
+    ])
+    await message.reply("Bienvenido, elige una opción:", reply_markup=keyboard)
+
+# Manejo de botones
 @app.on_callback_query()
-async def menu_handler(client, callback_query):
+async def callback_handler(client, callback_query):
     user_id = callback_query.from_user.id
     data = callback_query.data
 
+    await callback_query.answer()  # IMPORTANTE
+
     if data == "instagram":
-        await callback_query.message.reply("Envíame el nombre de usuario de Instagram.")
         user_states[user_id] = "instagram"
+        await callback_query.message.reply("📸 Escribe el nombre de usuario de Instagram.")
 
     elif data == "spoof":
-        await callback_query.message.reply(
-            "Introduce los datos del correo en el siguiente formato:\n\n`de|para|asunto|mensaje`",
-            parse_mode="markdown"
-        )
         user_states[user_id] = "spoof"
+        await callback_query.message.reply(
+            "✉️ Envíame el correo en este formato:\n`remitente|destinatario|asunto|mensaje`", parse_mode="markdown"
+        )
 
     elif data == "set_session":
-        await callback_query.message.reply("Escribe tu nuevo sessionid de Instagram.")
         user_states[user_id] = "set_session"
+        await callback_query.message.reply("🔐 Escribe tu nuevo sessionid para Instagram.")
 
-# Mensajes de usuario según contexto
+# Procesar entrada de texto
 @app.on_message(filters.text & filters.private)
-async def handle_message(client, message):
+async def text_handler(client, message):
     user_id = message.from_user.id
-    text = message.text.strip()
     state = user_states.get(user_id)
 
+    if not state:
+        return await message.reply("Usa /start para comenzar.")
+
+    text = message.text.strip()
+
     if state == "instagram":
-        await message.reply("🔍 Buscando datos...")
+        await message.reply("🔍 Buscando información...")
         data = get_instagram_info(text, SESSION_ID, user_id)
 
         if "error" in data:
-            await message.reply(f"❌ {data['error']}")
+            await message.reply(data["error"])
         else:
             info = (
-                f"📌 **Usuario:** {data['username']}\n"
-                f"📛 **Nombre completo:** {data['full_name']}\n"
-                f"🆔 **ID:** {data['user_id']}\n"
-                f"👥 **Seguidores:** {data['followers']}\n"
-                f"🔒 **Cuenta privada:** {'Sí' if data['is_private'] else 'No'}\n"
-                f"📝 **Bio:** {data['bio']}\n"
-                f"📧 **Correo:** {data['email']}\n"
-                f"📞 **Teléfono:** {data['phone']}\n"
+                f"👤 Usuario: `{data['username']}`\n"
+                f"📛 Nombre: {data['full_name']}\n"
+                f"🆔 ID: {data['user_id']}\n"
+                f"👥 Seguidores: {data['followers']}\n"
+                f"🔐 Privado: {'Sí' if data['is_private'] else 'No'}\n"
+                f"📝 Bio: {data['bio']}\n"
+                f"📧 Email: {data['email']}\n"
+                f"📞 Teléfono: {data['phone']}\n"
             )
-            await message.reply_photo(photo=data['profile_picture'], caption=info)
-        user_states.pop(user_id, None)
+            if data["pfp"]:
+                await message.reply_photo(data["pfp"], caption=info, parse_mode="markdown")
+            else:
+                await message.reply(info, parse_mode="markdown")
+
+        user_states.pop(user_id)
 
     elif state == "spoof":
         parts = text.split("|")
         if len(parts) != 4:
-            await message.reply("❌ Formato incorrecto. Usa: `de|para|asunto|mensaje`", parse_mode="markdown")
-        else:
-            sender, recipient, subject, body = map(str.strip, parts)
-            result = send_spoof_email(sender, recipient, subject, body)
-            await message.reply(result)
-        user_states.pop(user_id, None)
+            return await message.reply("❌ Formato incorrecto. Usa:\n`remitente|destinatario|asunto|mensaje`", parse_mode="markdown")
+        remitente, destino, asunto, cuerpo = map(str.strip, parts)
+        result = send_spoof_email(remitente, destino, asunto, cuerpo)
+        await message.reply(result)
+        user_states.pop(user_id)
 
     elif state == "set_session":
         user_sessions[user_id] = text
-        await message.reply("✅ Nuevo sessionid guardado temporalmente.")
-        user_states.pop(user_id, None)
+        await message.reply("✅ Nuevo sessionid establecido temporalmente.")
+        user_states.pop(user_id)
 
-    else:
-        await message.reply("❓ Usa /start para comenzar.")
-
-# Ejecutar
+# Lanzar bot
 if __name__ == "__main__":
     app.run()
