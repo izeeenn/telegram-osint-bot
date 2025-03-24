@@ -50,16 +50,18 @@ def obfuscate_number(phone):
 # Enviar correo spoofing
 def send_spoof_email(sender, recipient, subject, message):
     msg = MIMEMultipart()
-    msg["From"] = "mi_correo@dominio.com"  # Dirección personalizada para el remitente
+    msg["From"] = SMTP_USER  # Usar el mismo correo de autenticación como remitente
     msg["To"] = recipient
     msg["Subject"] = subject
+    msg["Reply-To"] = sender  # Si quieres que las respuestas se vayan al sender
+    msg["Return-Path"] = sender  # Asegúrate de que las respuestas se gestionen correctamente
     msg.attach(MIMEText(message, "plain"))
 
     try:
         server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
         server.starttls()
         server.login(SMTP_USER, SMTP_PASSWORD)
-        server.sendmail(sender, recipient, msg.as_string())
+        server.sendmail(SMTP_USER, recipient, msg.as_string())  # Usar SMTP_USER para el envío
         server.quit()
         return "✅ Correo enviado correctamente."
     except Exception as e:
