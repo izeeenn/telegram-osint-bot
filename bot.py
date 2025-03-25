@@ -16,6 +16,7 @@ API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SESSION_ID = os.getenv("SESSION_ID")  # Cargar SESSION_ID desde .env
+TEXTBELT_KEY = os.getenv("TEXTBELT_KEY")  # Clave de Textbelt
 
 # Configuración del bot
 app = Client(
@@ -30,7 +31,6 @@ def get_instagram_info(username, session_id):
     headers = {"User-Agent": "Instagram 101.0.0.15.120", "x-ig-app-id": "936619743392459"}
     cookies = {"sessionid": session_id}
     
-    # Obtener información básica del perfil
     profile_url = f'https://i.instagram.com/api/v1/users/web_profile_info/?username={username}'
     response = requests.get(profile_url, headers=headers, cookies=cookies)
     
@@ -72,103 +72,38 @@ def advanced_lookup(username, session_id):
     except json.JSONDecodeError:
         return {"error": "Rate limit"}
 
-# Función para construir el menú dinámico
-def main_menu():
-    botones = [
-        [InlineKeyboardButton("🔎 Buscar usuario de Instagram", callback_data="search_user")],
-        [InlineKeyboardButton("🔑 Cambiar SESSION_ID", callback_data="change_session")]
-    ]
-    return InlineKeyboardMarkup(botones)
+# Función para enviar SMS
+def send_sms(phone, message):
+    url = "https://textbelt.com/text"
+    payload = {
+        "phone": phone,
+        "message": message,
+        "key": TEXTBELT_KEY
+    }
+    response = requests.post(url, data=payload)
+    return response.json()
 
-# Función para mostrar el menú principal
-def session_menu():
-    botones = [
-        [InlineKeyboardButton("🔄 Volver al menú principal", callback_data="back_to_main")]
-    ]
-    return InlineKeyboardMarkup(botones)
-
-# Comando /start
-@app.on_message(filters.command("start"))
-async def start(client, message):
-    await message.reply_text(
-        f"🌟 **SESSION_ID actual:** `{SESSION_ID}`\n\n"
-        "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
-        reply_markup=main_menu()
-    )
-
-# Callback para buscar usuario
-@app.on_callback_query(filters.regex("search_user"))
-async def search_user(client, callback_query):
-    chat_id = callback_query.message.chat.id
-    await callback_query.message.edit_text("🔍 Envíame el **nombre de usuario** de Instagram que quieres buscar.")
+# Comando para enviar SMS
+@app.on_message(filters.command("send_sms"))
+async def sms_command(client, message):
+    await message.reply_text("📩 Envíame el número de teléfono y el mensaje separados por una coma.\n\nEjemplo: `+521234567890, Hola, ¿cómo estás?`")
 
     @app.on_message(filters.text & filters.private)
-    async def receive_username(client, message):
-        if message.chat.id == chat_id:
-            username = message.text.strip()
-            await message.reply_text("🔍 Buscando información, espera un momento...")
-            data = get_instagram_info(username, SESSION_ID)
-
-            if "error" in data:
-                await message.reply_text(f"❌ Error: {data['error']}")
+    async def receive_sms_info(client, msg):
+        try:
+            phone, sms_text = msg.text.split(",", 1)
+            phone = phone.strip()
+            sms_text = sms_text.strip()
+            result = send_sms(phone, sms_text)
+            
+            if result.get("success"):
+                await msg.reply_text(f"✅ SMS enviado correctamente a {phone}.")
             else:
-                info_msg = (
-                    f"📌 **Usuario:** {data['username']}\n"
-                    f"📛 **Nombre:** {data['full_name']}\n"
-                    f"🆔 **ID:** {data['user_id']}\n"
-                    f"👥 **Seguidores:** {data['followers']}\n"
-                    f"🔒 **Cuenta privada:** {'Sí' if data['is_private'] else 'No'}\n"
-                    f"📝 **Bio:** {data['bio']}\n"
-                    f"📧 **Email público:** {data['public_email']}\n"
-                    f"📞 **Teléfono público:** {data['public_phone']}\n"
-                    f"📧 **Correo oculto:** {data['obfuscated_email']}\n"
-                    f"📞 **Teléfono oculto:** {data['obfuscated_phone']}\n"
-                )
-                
-                # Enviar la foto de perfil al inicio
-                await message.reply_photo(
-                    photo=data['profile_picture'],  # Foto de perfil
-                    caption=info_msg  # Información del perfil
-                )
-
-                app.remove_handler(receive_username)
-
-# Callback para cambiar SESSION_ID
-@app.on_callback_query(filters.regex("change_session"))
-async def change_session(client, callback_query):
-    chat_id = callback_query.message.chat.id
-    await callback_query.message.edit_text("🔐 Envíame el **nuevo SESSION_ID**.")
-
-    # Aquí esperamos que el usuario ingrese el nuevo SESSION_ID sin buscar ningún usuario
-    @app.on_message(filters.text & filters.private)
-    async def receive_new_session(client, message):
-        if message.chat.id == chat_id:
-            # Verificamos que el texto ingresado no sea vacío
-            new_session_id = message.text.strip()
-            if new_session_id:  # Aseguramos que no esté vacío
-                global SESSION_ID
-                SESSION_ID = new_session_id
-                os.environ["SESSION_ID"] = new_session_id  # Guardar en el entorno también
-                await message.reply_text(f"✅ Nuevo SESSION_ID guardado: `{SESSION_ID}`")
-                app.remove_handler(receive_new_session)
-                # Volver a mostrar el menú
-                await message.reply_text(
-                    f"🌟 **SESSION_ID actual:** `{SESSION_ID}`\n\n"
-                    "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
-                    reply_markup=main_menu()
-                )
-            else:
-                await message.reply_text("❌ El SESSION_ID no puede estar vacío. Por favor, ingresa uno válido.")
-                app.remove_handler(receive_new_session)
-
-# Callback para volver al menú principal
-@app.on_callback_query(filters.regex("back_to_main"))
-async def back_to_main(client, callback_query):
-    await callback_query.message.edit_text(
-        f"🌟 **SESSION_ID actual:** `{SESSION_ID}`\n\n"
-        "¡Bienvenido! 🔍\nSelecciona una opción del menú:",
-        reply_markup=main_menu()
-    )
+                await msg.reply_text(f"❌ Error al enviar SMS: {result.get('error', 'Desconocido')}")
+        except ValueError:
+            await msg.reply_text("❌ Formato incorrecto. Usa: `+521234567890, Mensaje aquí`")
+        finally:
+            app.remove_handler(receive_sms_info)
 
 # Ejecutar el bot
 if __name__ == "__main__":
