@@ -21,7 +21,7 @@ def get_instagram_info(username, session_id):
         "User-Agent": "Instagram 101.0.0.15.120",
         "x-ig-app-id": "936619743392459"
     }
-    cookies = {"sessionid": session_id}
+    cookies = {"71901593608%3Am1xRMM21dKOpV7%3A1%3AAYeufS7hJnkrlZ0gEfhb2jaauxW_NV8Av2jYoRCk3g": session_id}
 
     try:
         response = requests.get(
