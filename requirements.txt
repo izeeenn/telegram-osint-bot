@@ -1,6 +1,3 @@
-pyrogram
-tgcrypto
-python-dotenv
+python-telegram-bot==20.3
 requests
-phonenumbers
-pycountry
+python-dotenv
